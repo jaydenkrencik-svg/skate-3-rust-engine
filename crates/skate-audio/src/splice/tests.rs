@@ -62,7 +62,7 @@ fn splc_dir() -> Option<std::path::PathBuf> {
 }
 
 fn disc_bank(name: &str) -> Option<Vec<u8>> {
-    std::fs::read(splc_dir()?.join(format!("{name}.bnk"))).ok()
+    skate_fs::read(splc_dir()?.join(format!("{name}.bnk"))).ok()
 }
 
 #[test]
@@ -80,9 +80,9 @@ fn disc_banks_parse_and_the_contact_ids_resolve() {
     // Every bank on the disc parses.
     let dir = splc_dir().unwrap();
     let mut n = 0;
-    for e in std::fs::read_dir(dir).unwrap() {
+    for e in skate_fs::read_dir(dir).unwrap() {
         let p = e.unwrap().path();
-        let d = std::fs::read(&p).unwrap();
+        let d = skate_fs::read(&p).unwrap();
         SpliceBank::parse(&d).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
         let tree = SpliceBank::tree_len(&d).unwrap();
         assert_eq!(SpliceBank::parse(&d[..tree]).unwrap(), SpliceBank::parse(&d).unwrap());

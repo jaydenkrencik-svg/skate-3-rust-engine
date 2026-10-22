@@ -495,7 +495,7 @@ mod tests {
     #[test]
     #[ignore = "needs the private install data"]
     fn npc_physics_in13_slews_toward_the_relative_speed() {
-        let bytes = match std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb")) {
+        let bytes = match skate_fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb")) {
             Ok(b) => b,
             Err(_) => panic!("missing private data: no MixMap"),
         };

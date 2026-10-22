@@ -1271,7 +1271,7 @@ mod tests {
     #[ignore = "needs the private install data"]
     fn emitter_words_from_the_retail_mixmap() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb");
-        let Ok(bytes) = std::fs::read(path) else {
+        let Ok(bytes) = skate_fs::read(path) else {
             panic!("missing private data: no {path}");
         };
         let mut n = native(Some(MixMap::from_bytes(&bytes).unwrap()));
@@ -1331,25 +1331,25 @@ mod tests {
     #[ignore = "needs the private install data"]
     fn missing_install_parts_fall_back_without_breaking() {
         let real = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio"));
-        let Ok(text) = std::fs::read_to_string(real.join("audio_manifest.json")) else { panic!("missing private data: no audio install") };
+        let Ok(text) = skate_fs::read_to_string(real.join("audio_manifest.json")) else { panic!("missing private data: no audio install") };
         let full: serde_json::Value = serde_json::from_str(&text).unwrap();
         if full["aems"]["projects"].as_array().is_none_or(|p| p.is_empty()) {
             panic!("missing private data: the install has no AEMS banks");
         }
         let dir = std::env::temp_dir().join(format!("skate-audio-fallback-{}", std::process::id()));
         let audio = dir.join("private/audio");
-        std::fs::create_dir_all(&audio).unwrap();
+        skate_fs::create_dir_all(&audio).unwrap();
         let mut links = Vec::new();
         for sub in ["aems", "banks", "grains", "wheels", "ambience"] {
             let (link, target) = (audio.join(sub), real.join(sub));
-            if !target.is_dir() {
+            if !skate_fs::is_dir(&target) {
                 continue;
             }
             // mklink does not take the `\\?\` form canonicalize returns.
-            let target = target.canonicalize().unwrap().to_string_lossy().trim_start_matches(r"\\?\").to_owned();
+            let target = skate_fs::canonicalize(&target).unwrap().to_string_lossy().trim_start_matches(r"\\?\").to_owned();
             let out = std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(link.to_string_lossy().replace('/', "\\")).arg(&target).output();
             if !out.as_ref().is_ok_and(|o| o.status.success()) {
-                let _ = std::fs::remove_dir_all(&dir);
+                let _ = skate_fs::remove_dir_all(&dir);
                 let why = out.map_or_else(|e| e.to_string(), |o| String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr));
                 panic!("missing private data: could not link {sub} ({})", why.trim());
             }
@@ -1358,7 +1358,7 @@ mod tests {
         let start = |name: &str, edit: &dyn Fn(&mut serde_json::Value)| -> Result<Native, String> {
             let mut m = full.clone();
             edit(&mut m);
-            std::fs::write(audio.join("audio_manifest.json"), serde_json::to_vec(&m).unwrap()).unwrap();
+            skate_fs::write(audio.join("audio_manifest.json"), serde_json::to_vec(&m).unwrap()).unwrap();
             let library = super::super::Library::load(&dir).unwrap_or_else(|e| panic!("{name}: {e}"));
             let r = Native::start(&library);
             println!("{name}: {}", match &r {
@@ -1394,9 +1394,9 @@ mod tests {
             .expect("starts without the bus tuning");
         }));
         for link in &links {
-            let _ = std::fs::remove_dir(link);
+            let _ = skate_fs::remove_dir(link);
         }
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }

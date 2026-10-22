@@ -2,7 +2,7 @@
 use bevy::{
     asset::{
         LoadState,
-        io::{AssetSourceBuilder, file::FileAssetReader},
+        io::AssetSourceBuilder,
     },
     gltf::Gltf,
     input::mouse::{MouseScrollUnit, MouseWheel},
@@ -14,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    time::Instant,
+    
 };
+use web_time::Instant;
 
 const COLUMNS: usize = 3;
 const CARD_HEIGHT: f32 = 246.;
@@ -139,16 +140,16 @@ impl CustomModels {
 pub(crate) fn library_path() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
+        .unwrap_or_else(skate_fs::temp_dir)
         .join("Skate3RustEngine/custom-characters")
 }
 pub(crate) fn register_source(app: &mut App) {
     let cache = crate::multiplayer::appearance::cache_directory().to_owned();
-    app.register_asset_source("online-characters", AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(cache.clone()))));
+    app.register_asset_source("online-characters", AssetSourceBuilder::new(move || crate::assets::directory_reader(cache.clone())));
     let directory = library_path();
     app.register_asset_source(
         "characters",
-        AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(directory.clone()))),
+        AssetSourceBuilder::new(move || crate::assets::directory_reader(directory.clone())),
     );
 }
 fn valid_id(id: &str) -> bool {
@@ -158,7 +159,7 @@ fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 fn discover(directory: &Path) -> Vec<Entry> {
-    let mut entries: Vec<Entry> = std::fs::read_dir(directory.join("entries"))
+    let mut entries: Vec<Entry> = skate_fs::read_dir(directory.join("entries"))
         .into_iter()
         .flatten()
         .flatten()
@@ -168,15 +169,15 @@ fn discover(directory: &Path) -> Vec<Entry> {
                 return None;
             }
             let path = folder.path();
-            let data = std::fs::read(path.join("manifest.json")).ok()?;
+            let data = skate_fs::read(path.join("manifest.json")).ok()?;
             if data.len() > 65536 {
                 return None;
             }
             let mut entry: Entry = serde_json::from_slice(&data).ok()?;
             if entry.version != 1
                 || entry.id != id
-                || !path.join("character.glb").is_file()
-                || !path.join("preview.png").is_file()
+                || !skate_fs::is_file(&path.join("character.glb"))
+                || !skate_fs::is_file(&path.join("preview.png"))
             {
                 return None;
             }
@@ -208,9 +209,9 @@ fn discover_all(directory: &Path, native_directory: &Path, native_prefix: &str) 
     entries
 }
 fn save_selection(directory: &Path, selected: Option<String>) -> Result<(), String> {
-    std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    skate_fs::create_dir_all(directory).map_err(|e| e.to_string())?;
     let temporary = directory.join("selection.tmp");
-    std::fs::write(
+    skate_fs::write(
         &temporary,
         serde_json::to_vec(&Selection {
             version: 1,
@@ -219,7 +220,7 @@ fn save_selection(directory: &Path, selected: Option<String>) -> Result<(), Stri
         .unwrap(),
     )
     .map_err(|e| e.to_string())?;
-    std::fs::rename(temporary, directory.join("selection.json")).map_err(|e| e.to_string())
+    skate_fs::rename(temporary, directory.join("selection.json")).map_err(|e| e.to_string())
 }
 pub(crate) struct CustomModelsPlugin;
 impl Plugin for CustomModelsPlugin {
@@ -229,7 +230,7 @@ impl Plugin for CustomModelsPlugin {
         let native_directory = crate::customiser_parts::asset_directory(assets).join("native-roster");
         let native_prefix = format!("{}/", native_directory.strip_prefix(assets).unwrap().to_string_lossy().replace('\\', "/"));
         let entries = discover_all(&directory, &native_directory, &native_prefix);
-        let saved = std::fs::read(directory.join("selection.json"))
+        let saved = skate_fs::read(directory.join("selection.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<Selection>(&b).ok())
             .filter(|s| s.version == 1)
@@ -386,21 +387,21 @@ fn start_import(directory: &Path, reference: &Path) -> Result<Import, String> {
         .parent()
         .ok_or("Missing game directory")?
         .join("support/skate3setup.exe");
-    if !executable.is_file() {
+    if !skate_fs::is_file(&executable) {
         return Err("Character importer is missing. Restore support/skate3setup.exe from the complete Windows package.".into());
     }
     let jobs = directory.join("jobs");
-    std::fs::create_dir_all(&jobs).map_err(|e| e.to_string())?;
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    skate_fs::create_dir_all(&jobs).map_err(|e| e.to_string())?;
+    let nonce = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let result = jobs.join(format!("{}-{nonce}.json", std::process::id()));
+    let result = jobs.join(format!("{}-{nonce}.json", skate_fs::process_id()));
     let mut command = Command::new(&executable);
     // Preserve optional calibration from earlier local Custom Models builds.
     let profile = executable.parent().unwrap().join("custom-models/calibration.json");
     command.arg("--character-import");
-    if profile.is_file() {
+    if skate_fs::is_file(&profile) {
         command.arg("--profile").arg(profile);
     }
     command
@@ -443,10 +444,10 @@ fn poll_import(mut state: ResMut<CustomModels>) {
         return;
     }
     let job = state.import.take().unwrap();
-    let reply = std::fs::read(&job.result)
+    let reply = skate_fs::read(&job.result)
         .ok()
         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
-    let _ = std::fs::remove_file(&job.result);
+    let _ = skate_fs::remove_file(&job.result);
     state.entries = discover_all(&state.directory, &state.native_directory, &state.native_prefix);
     state.status = match reply.as_ref().and_then(|r| r["status"].as_str()) {
         Some("cancelled") => "Import cancelled. Your character is unchanged.".into(),
@@ -717,12 +718,12 @@ mod tests {
         for (library, id, name, pro) in [(&personal, &pro_id, "Legacy pro", true),
             (&personal, &import_id, "My import", false), (&native, &pro_id, "Current pro", true)] {
             let entry = library.join("entries").join(id);
-            std::fs::create_dir_all(&entry).unwrap();
-            std::fs::write(entry.join("manifest.json"), serde_json::to_vec(&serde_json::json!({
+            skate_fs::create_dir_all(&entry).unwrap();
+            skate_fs::write(entry.join("manifest.json"), serde_json::to_vec(&serde_json::json!({
                 "version":1,"id":id,"name":name,"native":if pro {serde_json::json!({"key":"pro","category":"Pro"})} else {serde_json::Value::Null}
             })).unwrap()).unwrap();
-            std::fs::write(entry.join("character.glb"), b"fixture").unwrap();
-            std::fs::write(entry.join("preview.png"), b"fixture").unwrap();
+            skate_fs::write(entry.join("character.glb"), b"fixture").unwrap();
+            skate_fs::write(entry.join("preview.png"), b"fixture").unwrap();
         }
         let entries = discover_all(&personal, &native, "private/roster/");
         assert_eq!(entries.len(), 2);
@@ -732,7 +733,7 @@ mod tests {
         let imported = entries.iter().find(|e| e.id == import_id).unwrap();
         assert_eq!(imported.asset_path("preview.png"), format!("characters://entries/{import_id}/preview.png"));
         assert_eq!(discover(&personal).len(), 2); // No legacy entry was removed.
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn customiser_restore_stock_invalidates_cached_outfit_and_animation() {
@@ -965,7 +966,7 @@ mod tests {
             .resource::<Assets<Image>>()
             .get(material.base_color_texture.as_ref().unwrap())
             .unwrap();
-        let bytes = std::fs::read(std::env::var("SKATE_TEST_DIFFUSE").unwrap()).unwrap();
+        let bytes = skate_fs::read(std::env::var("SKATE_TEST_DIFFUSE").unwrap()).unwrap();
         let expected = Image::from_buffer(
             &bytes,
             bevy::image::ImageType::MimeType("image/png"),
@@ -993,21 +994,21 @@ mod tests {
         let root = std::env::temp_dir().join(format!("skate-model-library-{}", std::process::id()));
         let id = "a".repeat(64);
         let entry = root.join("entries").join(&id);
-        std::fs::create_dir_all(&entry).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&entry).unwrap();
+        skate_fs::write(
             entry.join("manifest.json"),
             format!(r#"{{"version":1,"id":"{id}","name":"Model"}}"#),
         )
         .unwrap();
         assert!(discover(&root).is_empty());
-        std::fs::write(entry.join("character.glb"), b"fixture").unwrap();
-        std::fs::write(entry.join("preview.png"), b"fixture").unwrap();
+        skate_fs::write(entry.join("character.glb"), b"fixture").unwrap();
+        skate_fs::write(entry.join("preview.png"), b"fixture").unwrap();
         assert_eq!(discover(&root).len(), 1);
         save_selection(&root, Some(id.clone())).unwrap();
         save_selection(&root, None).unwrap();
         let saved: Selection =
-            serde_json::from_slice(&std::fs::read(root.join("selection.json")).unwrap()).unwrap();
+            serde_json::from_slice(&skate_fs::read(root.join("selection.json")).unwrap()).unwrap();
         assert!(saved.selected.is_none());
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 }

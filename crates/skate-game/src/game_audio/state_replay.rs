@@ -40,7 +40,7 @@ pub(crate) fn try_read(text: &str) -> Result<Vec<Row>, String> {
 
 #[cfg(test)]
 pub(crate) fn read(path: &std::path::Path) -> Vec<Row> {
-    let text = std::fs::read_to_string(path).unwrap();
+    let text = skate_fs::read_to_string(path).unwrap();
     let mut lines = text.lines();
     let cols: Vec<String> = lines.next().unwrap().split('\t').map(str::to_owned).collect();
     lines.map(|l| Row(cols.iter().cloned().zip(l.split('\t').map(|v| v.parse::<f64>().unwrap())).collect())).collect()

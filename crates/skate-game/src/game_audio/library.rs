@@ -853,7 +853,7 @@ fn decode_wavs<'a>(files: impl Iterator<Item = &'a Path>) -> BankPcm {
         .map(|file| {
             #[cfg(test)]
             WAV_DECODES.with(|n| n.set(n.get() + 1));
-            std::fs::read(file).ok().and_then(|bytes| wav_pcm(&bytes)).map(Arc::new)
+            skate_fs::read(file).ok().and_then(|bytes| wav_pcm(&bytes)).map(Arc::new)
         })
         .collect()
 }
@@ -907,7 +907,7 @@ impl BankSource {
     /// The `.abk` parsed and its WAVs decoded; the errors are `ensure_bank`'s. Mod WAVs get their
     /// headers from the PCM ([`mod_header`]).
     pub(crate) fn load(&self) -> Result<(skate_audio::formats::Bank, BankPcm), String> {
-        let bytes = std::fs::read(&self.abk).map_err(|e| format!("{}: {e}", self.file))?;
+        let bytes = skate_fs::read(&self.abk).map_err(|e| format!("{}: {e}", self.file))?;
         let mut bank = skate_audio::formats::Bank::parse(&self.stem, bytes).map_err(|e| e.to_string())?;
         let pcm = decode_wavs(self.wavs.iter().map(PathBuf::as_path));
         for &(slot, loop_start) in &self.rebuild {
@@ -1024,8 +1024,8 @@ impl Library {
     }
 
     fn file_stamp(&self, file: &str) -> String {
-        let meta = std::fs::metadata(self.path(file)).ok();
-        let modified = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+        let meta = skate_fs::metadata(self.path(file)).ok();
+        let modified = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(web_time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
         format!("{file}|{}|{modified}", meta.map_or(0, |m| m.len()))
     }
 
@@ -1153,7 +1153,7 @@ impl Library {
         self.tuning_raw
             .get_or_init(|| {
                 let path = self.root.join("audio_manifest.json");
-                let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                let bytes = skate_fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
                 let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
                 Ok(tuning_sections(&value))
             })
@@ -1285,7 +1285,7 @@ impl Library {
     pub(crate) fn load_with(asset_root: &Path, overlays: &[OverlaySource]) -> Result<(Self, ContentReport), String> {
         let root = asset_root.join("private/audio");
         let path = root.join("audio_manifest.json");
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = skate_fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut report = ContentReport::default();
         let mut mods = BTreeMap::new();
         let raw = std::sync::OnceLock::new();
@@ -1307,7 +1307,7 @@ impl Library {
                 if !o.overlay.add.projects.is_empty() {
                     let taken = taken.get_or_insert_with(|| {
                         let files: Vec<String> = value["aems"]["projects"].as_array().map_or(Vec::new(), |a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect());
-                        files.iter().filter_map(|f| std::fs::read(root.join(f)).ok().and_then(|b| skate_mods::audio_content::project_symbols(&b, f).ok())).flatten().collect()
+                        files.iter().filter_map(|f| skate_fs::read(root.join(f)).ok().and_then(|b| skate_mods::audio_content::project_symbols(&b, f).ok())).flatten().collect()
                     });
                     let read: Result<Vec<(u8, String)>, String> = o.overlay.add.projects.iter().try_fold(Vec::new(), |mut acc, f| {
                         let bytes = skate_mods::read_bounded(o.root, f, skate_mods::audio_content::MAX_BINARY_BYTES)?;
@@ -1391,7 +1391,7 @@ impl Library {
         if self.failed.contains(file) {
             return None;
         }
-        match std::fs::read(self.path(file)) {
+        match skate_fs::read(self.path(file)) {
             Ok(bytes) => {
                 let peak = wav_peak(&bytes);
                 let channels = wav_channels(&bytes);
@@ -1531,7 +1531,7 @@ impl Library {
 
     /// Read a manifest-listed file (paths were validated at load).
     pub(crate) fn read(&self, file: &str) -> std::io::Result<Vec<u8>> {
-        std::fs::read(self.path(file))
+        skate_fs::read(self.path(file))
     }
 
     /// A Splice bank for the native player: its patch tree and its samples (stream n = WAV n), or
@@ -1610,7 +1610,7 @@ pub(crate) mod tests {
         assert_eq!((g.x[7], g.y[4]), (7.0, 2.0), "exported values win");
         assert_eq!(CollisionJson::default().contacts().body_speed_curve, SpeedGraph8::BODY_SPEED, "else the vault's words");
         let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/stock/skater-collections.json"));
-        let Ok(text) = std::fs::read_to_string(path) else {
+        let Ok(text) = skate_fs::read_to_string(path) else {
             panic!("missing private data: no converted skater collections");
         };
         let all: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -1646,20 +1646,20 @@ pub(crate) mod tests {
     /// second looping) with its 2 WAVs, an ambience bed and a speech index; and a mod folder.
     pub(crate) fn content_fixture(name: &str) -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("skate-audio-content-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
         let audio = dir.join("private/audio");
         for d in ["banks/x", "banks/T", "aems", "ambience"] {
-            std::fs::create_dir_all(audio.join(d)).unwrap();
+            skate_fs::create_dir_all(audio.join(d)).unwrap();
         }
-        std::fs::write(audio.join("banks/x/0.wav"), test_wav(100, 48000, 100)).unwrap();
-        std::fs::write(audio.join("banks/x/1.wav"), test_wav(100, 48000, 200)).unwrap();
-        std::fs::write(audio.join("banks/T/0.wav"), test_wav(300, 48000, 300)).unwrap();
-        std::fs::write(audio.join("banks/T/1.wav"), test_wav(400, 48000, 400)).unwrap();
-        std::fs::write(audio.join("ambience/bed.wav"), test_wav(1000, 48000, 500)).unwrap();
+        skate_fs::write(audio.join("banks/x/0.wav"), test_wav(100, 48000, 100)).unwrap();
+        skate_fs::write(audio.join("banks/x/1.wav"), test_wav(100, 48000, 200)).unwrap();
+        skate_fs::write(audio.join("banks/T/0.wav"), test_wav(300, 48000, 300)).unwrap();
+        skate_fs::write(audio.join("banks/T/1.wav"), test_wav(400, 48000, 400)).unwrap();
+        skate_fs::write(audio.join("ambience/bed.wav"), test_wav(1000, 48000, 500)).unwrap();
         use skate_audio::eval::synthetic;
         let bank = synthetic::bank(&[synthetic::player_module(4)], &[], &[(300, false), (400, true)]);
-        std::fs::write(audio.join("aems/T.abk"), &bank.data).unwrap();
-        std::fs::write(audio.join("audio_manifest.json"), serde_json::json!({
+        skate_fs::write(audio.join("aems/T.abk"), &bank.data).unwrap();
+        skate_fs::write(audio.join("audio_manifest.json"), serde_json::json!({
             "version": 5,
             "ambience": {"bed": {"file": "ambience/bed.wav"}},
             "grains": {}, "wheels": {},
@@ -1669,7 +1669,7 @@ pub(crate) mod tests {
             "player_tuning": {"wheel_bucket_high": 3.0, "surface_table": [[1, 2]]}
         }).to_string()).unwrap();
         let mods = dir.join("mods/dev.a");
-        std::fs::create_dir_all(mods.join("audio")).unwrap();
+        skate_fs::create_dir_all(mods.join("audio")).unwrap();
         (dir, mods)
     }
 
@@ -1696,7 +1696,7 @@ pub(crate) mod tests {
         let (a, b) = (plain.bank_source("T").unwrap(), merged.bank_source("T").unwrap());
         assert_eq!(format!("{a:?}"), format!("{b:?}"), "same files, no header rebuilds");
         assert_eq!(a.wavs[1], dir.join("private/audio").join("banks/T/1.wav"), "install files resolve under the audio folder as before");
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// The same on the real install (data-gated): the merge path with an empty overlay reproduces
@@ -1720,7 +1720,7 @@ pub(crate) mod tests {
         assert_eq!(a.len(), b.len());
         assert!(a == b, "the merged manifest differs");
         // And the merge itself leaves the install's JSON as it was.
-        let bytes = std::fs::read(root.join("private/audio/audio_manifest.json")).unwrap();
+        let bytes = skate_fs::read(root.join("private/audio/audio_manifest.json")).unwrap();
         let install: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let mut m = install.clone();
         skate_mods::audio_merge::merge(&mut m, &[skate_mods::audio_merge::Source { id: "dev.a", overlay: &empty }]);
@@ -1734,8 +1734,8 @@ pub(crate) mod tests {
     #[test]
     fn a_replaced_sample_gets_its_own_header_and_the_mod_file() {
         let (dir, mods) = content_fixture("sample");
-        std::fs::write(mods.join("audio/long.wav"), test_wav(2205, 22050, 1234)).unwrap();
-        std::fs::write(mods.join("audio/bed.wav"), test_wav(50, 48000, 7)).unwrap();
+        skate_fs::write(mods.join("audio/long.wav"), test_wav(2205, 22050, 1234)).unwrap();
+        skate_fs::write(mods.join("audio/bed.wav"), test_wav(50, 48000, 7)).unwrap();
         let plain = Library::load(&dir).unwrap();
         let (want_bank, want_pcm) = plain.bank_source("T").unwrap().load().unwrap();
         let o = overlay(serde_json::json!({"version": 1, "replace": {
@@ -1764,7 +1764,7 @@ pub(crate) mod tests {
         assert_eq!(library.sample(&mut assets, "x", 1).unwrap().key.as_ref(), "banks/x/1.wav");
         assert_eq!(library.read("mod:dev.a/audio/bed.wav").unwrap(), test_wav(50, 48000, 7));
         assert_eq!(library.bank_pcm("x")[0].as_ref().unwrap().rate, 22050);
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// Two mods on one identity: the first by mod id wins, the second's claim is a conflict; an
@@ -1774,9 +1774,9 @@ pub(crate) mod tests {
     fn overlays_merge_in_order_and_a_bad_one_is_left_out() {
         let (dir, mods) = content_fixture("order");
         let mods_b = dir.join("mods/dev.b");
-        std::fs::create_dir_all(mods_b.join("audio")).unwrap();
-        std::fs::write(mods.join("audio/a.wav"), test_wav(10, 48000, 1)).unwrap();
-        std::fs::write(mods_b.join("audio/b.wav"), test_wav(10, 48000, 2)).unwrap();
+        skate_fs::create_dir_all(mods_b.join("audio")).unwrap();
+        skate_fs::write(mods.join("audio/a.wav"), test_wav(10, 48000, 1)).unwrap();
+        skate_fs::write(mods_b.join("audio/b.wav"), test_wav(10, 48000, 2)).unwrap();
         let a = overlay(serde_json::json!({"version": 1, "replace": {"samples": {"x": {"1": "audio/a.wav"}}}}));
         let b = overlay(serde_json::json!({"version": 1, "replace": {"samples": {"x": {"1": "audio/b.wav", "0": "audio/b.wav"}}}}));
         let (library, report) = Library::load_with(&dir, &[
@@ -1804,7 +1804,7 @@ pub(crate) mod tests {
         assert_eq!(library.zone(0xAB).unwrap().volume, 0.5, "dev.a's zone change left out with the rest of it");
         let (back, _) = Library::load_with(&dir, &[]).unwrap();
         assert_eq!(format!("{:?}", back.manifest), format!("{:?}", Library::load(&dir).unwrap().manifest), "removed overlay = retail");
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// The keyed sections an overlay changes reach the systems that read them: location sets (by
@@ -1814,12 +1814,12 @@ pub(crate) mod tests {
     fn sets_zones_emitters_and_programs_come_from_the_overlay() {
         let (dir, mods) = content_fixture("keyed");
         let audio = dir.join("private/audio/audio_manifest.json");
-        let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&audio).unwrap()).unwrap();
+        let mut m: serde_json::Value = serde_json::from_slice(&skate_fs::read(&audio).unwrap()).unwrap();
         m["random_sets"] = serde_json::json!({"7EE1991E4909C50E": {"name": "brewery", "sounds": [{"bank": "x", "volume": 1.0, "seconds": 5.0, "weight": 1}]}});
         m["emitters"] = serde_json::json!({"sfx_t": [{"index": 3, "flags": 0, "position": [0, 0, 0], "extent": [1, 1, 1], "scalars": [0, 1, 0, 0], "bank": "T", "kind": 1, "volume": 1.0}]});
         m["crossfades"] = serde_json::json!([{"from": "00000000000000AB", "to": "00000000000000CD", "group": 1, "level": 1.0}]);
-        std::fs::write(&audio, m.to_string()).unwrap();
-        std::fs::write(mods.join("audio/s.wav"), test_wav(10, 48000, 3)).unwrap();
+        skate_fs::write(&audio, m.to_string()).unwrap();
+        skate_fs::write(mods.join("audio/s.wav"), test_wav(10, 48000, 3)).unwrap();
         let o = overlay(serde_json::json!({"version": 1,
             "replace": {
                 "random_sets": {"brewery": {"sounds": [{"bank": "MOD_s", "weight": 2}], "min_interval": 1, "max_interval": 2}},
@@ -1849,7 +1849,7 @@ pub(crate) mod tests {
         assert!(library.is_mod_bank("MOD_s") && !library.is_mod_bank("x") && !library.is_mod_bank("nope"));
         assert_eq!(library.bank_group("MOD_s"), Some(false));
         assert!(library.resident_banks().is_empty(), "not preloaded");
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// Splice members and grain members (data-gated, the real install): a replaced sample of a
@@ -1865,12 +1865,12 @@ pub(crate) mod tests {
         let grain = plain.manifest.grains.iter().find(|(_, g)| g.grain.is_some() && g.file.is_some()).map(|(k, _)| k.clone()).expect("a grain member");
         let (wav, raw) = plain.grain_whole(&grain).map(|(a, b)| (a.to_owned(), b.to_owned())).unwrap();
         let mods = std::env::temp_dir().join(format!("skate-audio-splice-grain-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&mods);
-        std::fs::create_dir_all(mods.join("audio")).unwrap();
-        std::fs::write(mods.join("audio/pop.wav"), test_wav(4800, 44100, 4321)).unwrap();
+        let _ = skate_fs::remove_dir_all(&mods);
+        skate_fs::create_dir_all(mods.join("audio")).unwrap();
+        skate_fs::write(mods.join("audio/pop.wav"), test_wav(4800, 44100, 4321)).unwrap();
         // The test copies the install's own member into the temp mod (never committed anywhere).
-        std::fs::copy(plain.path(&raw), mods.join("audio/g.grain")).unwrap();
-        std::fs::copy(plain.path(&wav), mods.join("audio/g.wav")).unwrap();
+        skate_fs::copy(plain.path(&raw), mods.join("audio/g.grain")).unwrap();
+        skate_fs::copy(plain.path(&wav), mods.join("audio/g.wav")).unwrap();
         let o = overlay(serde_json::json!({"version": 1, "replace": {
             "samples": {stem: {"0": "audio/pop.wav"}},
             "grains": {grain.clone(): {"file": "audio/g.wav", "grain": "audio/g.grain"}}}}));
@@ -1884,7 +1884,7 @@ pub(crate) mod tests {
         let (w, r) = library.grain_whole(&grain).unwrap();
         assert_eq!((w, r), ("mod:dev.a/audio/g.wav", "mod:dev.a/audio/g.grain"));
         assert_eq!(library.read(r).unwrap(), plain.read(&raw).unwrap());
-        let _ = std::fs::remove_dir_all(&mods);
+        let _ = skate_fs::remove_dir_all(&mods);
     }
 
     /// The world-gaps data is overlay-reachable (data-gated, the real install): main-cast speech
@@ -1897,14 +1897,14 @@ pub(crate) mod tests {
     fn speech_takes_are_checked_when_the_overlays_merge() {
         let (dir, mods) = content_fixture("speech-check");
         let audio = dir.join("private/audio");
-        std::fs::create_dir_all(audio.join("speech")).unwrap();
-        std::fs::write(audio.join("speech/livingworld.json"), serde_json::json!({"clips": [
+        skate_fs::create_dir_all(audio.join("speech")).unwrap();
+        skate_fs::write(audio.join("speech/livingworld.json"), serde_json::json!({"clips": [
             {"name": "501_41_adtm1_Warn_n.dat", "takes": [{}, {}]}, {"name": "101_41_adtm1_SpecPos_f.dat", "takes": [{}]}]}).to_string()).unwrap();
         let manifest = audio.join("audio_manifest.json");
-        let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        let mut m: serde_json::Value = serde_json::from_slice(&skate_fs::read(&manifest).unwrap()).unwrap();
         m["speech"] = serde_json::json!({"livingworld": {"index": "speech/livingworld.json"}});
-        std::fs::write(&manifest, m.to_string()).unwrap();
-        std::fs::write(mods.join("audio/w.wav"), test_wav(100, 22050, 9)).unwrap();
+        skate_fs::write(&manifest, m.to_string()).unwrap();
+        skate_fs::write(mods.join("audio/w.wav"), test_wav(100, 22050, 9)).unwrap();
         let o = overlay(serde_json::json!({"version": 1,
             "replace": {"speech": {"livingworld": {"501_41_adtm1_Warn_n.dat": {"1": "audio/w.wav", "2": "audio/w.wav"}, "501_41_adtm1_Warn_f": {"0": "audio/w.wav"}}}},
             "add": {"speech": {"livingworld": {"101_41_adtm1_SpecPos_f": ["audio/w.wav"]}, "maincast": {"700_1_Line": ["audio/w.wav"]}}}}));
@@ -1918,7 +1918,7 @@ pub(crate) mod tests {
         assert_eq!(takes.keys().collect::<Vec<_>>(), [&("501_41_adtm1_Warn_n".to_owned(), 1)]);
         assert_eq!(extra.keys().collect::<Vec<_>>(), ["101_41_adtm1_SpecPos_f"]);
         assert!(library.speech_mods("maincast").1.is_empty());
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1927,16 +1927,16 @@ pub(crate) mod tests {
         let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets"));
         let Ok(plain) = Library::load(root) else { panic!("missing private data: no audio install") };
         let Some((index, _)) = plain.speech("maincast") else { panic!("missing private data: no main-cast index (stage_world_audio.py --maincast)") };
-        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(index).unwrap()).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&skate_fs::read(index).unwrap()).unwrap();
         let clip = json["clips"][0]["name"].as_str().unwrap().trim_end_matches(".dat").to_owned();
         assert!(plain.speech_mods("maincast").0.is_empty());
         let want = plain.world_tuning().ped_objects();
         let voice = plain.world_tuning().speech_voice();
         let mods = std::env::temp_dir().join(format!("skate-audio-world-gaps-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&mods);
-        std::fs::create_dir_all(mods.join("audio")).unwrap();
-        std::fs::write(mods.join("audio/line.wav"), test_wav(2205, 22050, 5)).unwrap();
-        std::fs::write(mods.join("audio/zap.wav"), test_wav(4410, 22050, 6)).unwrap();
+        let _ = skate_fs::remove_dir_all(&mods);
+        skate_fs::create_dir_all(mods.join("audio")).unwrap();
+        skate_fs::write(mods.join("audio/line.wav"), test_wav(2205, 22050, 5)).unwrap();
+        skate_fs::write(mods.join("audio/zap.wav"), test_wav(4410, 22050, 6)).unwrap();
         let o = overlay(serde_json::json!({"version": 1,
             "replace": {"speech": {"maincast": {clip.clone(): {"0": "audio/line.wav"}}}, "samples": {"Tazer": {"0": "audio/zap.wav"}}},
             "add": {"speech": {"maincast": {clip.clone(): ["audio/line.wav"]}}},
@@ -1954,7 +1954,7 @@ pub(crate) mod tests {
         let (bank, _) = library.bank_source("Tazer").expect("the Tazer bank").load().unwrap();
         let h = bank.samples[0].1.unwrap();
         assert_eq!((h.rate, h.frames), (22050, 4410), "the replacement's own header");
-        let _ = std::fs::remove_dir_all(&mods);
+        let _ = skate_fs::remove_dir_all(&mods);
     }
 
     #[test]
@@ -1999,9 +1999,9 @@ pub(crate) mod tests {
     #[test]
     fn loads_on_demand_and_reports_missing_files_once() {
         let dir = std::env::temp_dir().join(format!("skate-audio-library-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("private/audio/banks/x")).unwrap();
-        std::fs::write(dir.join("private/audio/banks/x/0000.wav"), b"RIFF").unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(dir.join("private/audio/banks/x")).unwrap();
+        skate_fs::write(dir.join("private/audio/banks/x/0000.wav"), b"RIFF").unwrap();
+        skate_fs::write(
             dir.join("private/audio/audio_manifest.json"),
             r#"{"version":3,"ambience":{},"grains":{},"wheels":{},
                 "banks":{"x":[{"file":"banks/x/0000.wav","seconds":0.1},{"file":"banks/x/missing.wav","seconds":0.1}]}}"#,
@@ -2016,6 +2016,6 @@ pub(crate) mod tests {
         assert!(library.sample(&mut assets, "x", 2).is_none());
         library.release(&mut assets, &clip);
         assert!(assets.get(clip.handle.id()).is_none());
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 }

@@ -64,7 +64,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
 ) {
     let path = config.asset_root.join("private/particles/water.png");
-    let image = std::fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
+    let image = skate_fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
         Image::from_buffer(
             &bytes,
             ImageType::MimeType("image/png"),

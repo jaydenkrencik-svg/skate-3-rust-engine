@@ -1,6 +1,7 @@
 //! Ordered bank indexing and lossless header decoding. Codec math is separate.
 use super::*;
-use std::{collections::BTreeMap, fs, path::Path, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
+use skate_fs as fs;
 
 pub struct Bank {
     bytes: Arc<[u8]>,

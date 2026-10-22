@@ -60,23 +60,34 @@ pub(crate) fn build(
     let mut app = App::new();
     crate::custom_models::register_source(&mut app);
     crate::modding::register_source(&mut app);
-    app.add_plugins(
-        DefaultPlugins
+    // The browser build renders through WebGPU into the loader page's canvas,
+    // fetches Bevy assets from the server (there are no .meta files), and
+    // keeps Bevy's LogPlugin, which logs to the console; natively
+    // profiling::init owns logging.
+    #[cfg(not(target_arch = "wasm32"))]
+    let (backends, canvas, meta_check) = (Backends::VULKAN, None, bevy::asset::AssetMetaCheck::default());
+    #[cfg(target_arch = "wasm32")]
+    let (backends, canvas, meta_check) = (Backends::BROWSER_WEBGPU, Some("#skate-canvas".to_string()), bevy::asset::AssetMetaCheck::Never);
+    let plugins = DefaultPlugins
             .set(AssetPlugin {
                 file_path: config.asset_root.to_string_lossy().into_owned(),
+                meta_check,
                 ..default()
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: config.multiplayer.title.clone().unwrap_or_else(||"Skate 3 Rust Engine".into()),
                     resolution: (1280, 800).into(),
+                    canvas,
+                    fit_canvas_to_parent: true,
+                    prevent_default_event_handling: true,
                     ..default()
                 }),
                 ..default()
             })
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(WgpuSettings {
-                    backends: Some(Backends::VULKAN),
+                    backends: Some(backends),
                     // Existing machine's validation layer rejects wgpu atomic shaders.
                     // This workaround belongs only to the rendering adapter.
                     instance_flags: InstanceFlags::empty(),
@@ -84,13 +95,16 @@ pub(crate) fn build(
                     ..default()
                 }),
                 ..default()
-            }).build().disable::<bevy::log::LogPlugin>()
+            }).build()
             // Gameplay and menu navigation both use raw pad states from
-            // input::platform (SDL3, XInput fallback). No game system consumes
-            // Bevy gamepad events/rumble; its second device backend can stall
-            // PreUpdate (70.68 ms in the University capture).
-            .disable::<bevy::gilrs::GilrsPlugin>(),
-    )
+            // input::platform (SDL3, XInput fallback, the Gamepad API in the
+            // browser). No game system consumes Bevy gamepad events/rumble; its
+            // second device backend can stall PreUpdate (70.68 ms in the
+            // University capture).
+            .disable::<bevy::gilrs::GilrsPlugin>();
+    #[cfg(not(target_arch = "wasm32"))]
+    let plugins = plugins.disable::<bevy::log::LogPlugin>();
+    app.add_plugins(plugins)
     .insert_resource(bevy::winit::WinitSettings {focused_mode:bevy::winit::UpdateMode::Continuous,unfocused_mode:bevy::winit::UpdateMode::Continuous})
     .insert_resource(config)
     .insert_resource(crate::retail_render::RetailScene(retail_scene))

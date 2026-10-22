@@ -5,8 +5,9 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 const CHILD: &str = "SKATE_REPORT_CHILD";
 const LINE_LIMIT: usize = 4096;
@@ -374,13 +375,13 @@ fn save(text: &str) -> std::io::Result<PathBuf> {
     for root in roots {
         let result = (|| {
             let folder = root.join("Skate3RustEngine/CrashReports");
-            std::fs::create_dir_all(&folder)?;
+            skate_fs::create_dir_all(&folder)?;
             let stamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
             let path = folder.join(format!("report-{stamp}-{}.txt", std::process::id()));
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = skate_fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(&path)?;

@@ -97,9 +97,9 @@ mod tests {
             return;
         };
         fn walk(path: &std::path::Path, result: &mut Vec<std::path::PathBuf>) {
-            for entry in std::fs::read_dir(path).unwrap().flatten() {
+            for entry in skate_fs::read_dir(path).unwrap().flatten() {
                 let p = entry.path();
-                if p.is_dir() {
+                if skate_fs::is_dir(&p) {
                     walk(&p, result);
                 } else if p.extension().is_some_and(|e| e == "wgsl") {
                     result.push(p);
@@ -107,7 +107,7 @@ mod tests {
             }
         }
         let mut files = vec![];
-        for entry in std::fs::read_dir(path).unwrap().flatten() {
+        for entry in skate_fs::read_dir(path).unwrap().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with("bevy_") && name.ends_with("-0.18.1") {
                 walk(&entry.path().join("src"), &mut files);
@@ -130,7 +130,7 @@ mod tests {
         .map(|(n, v)| ShaderDefVal::UInt(n.into(), v))
         .collect();
         for path in files {
-            let source = std::fs::read_to_string(&path).unwrap();
+            let source = skate_fs::read_to_string(&path).unwrap();
             if !source.contains("#define_import_path") {
                 continue;
             }

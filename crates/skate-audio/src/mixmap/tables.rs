@@ -232,7 +232,7 @@ mod tests {
             panic!("missing private data: SKATE_TU3_IMAGE (the TU3 image) is not set");
         };
         let path = std::path::PathBuf::from(path);
-        let Ok(img) = std::fs::read(&path) else {
+        let Ok(img) = skate_fs::read(&path) else {
             panic!("missing private data: no TU3 image at {}", path.display());
         };
         let word = |a: u32| u32::from_be_bytes(img[(a - 0x8200_0000) as usize..][..4].try_into().unwrap());

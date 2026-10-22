@@ -74,12 +74,12 @@ pub(crate) struct Parts {
 pub(crate) struct PartRoot(pub String);
 pub(crate) fn asset_directory(assets: &std::path::Path) -> std::path::PathBuf {
     let base = assets.join("private/customisation");
-    if std::fs::read(base.join("customiser-availability.json")).ok()
+    if skate_fs::read(base.join("customiser-availability.json")).ok()
         .and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok())
         .is_some_and(|v|v["version"]==1 && v["status"]=="unavailable") {
         return base.join("unavailable");
     }
-    if let Some(set) = std::fs::read(base.join("current.json")).ok()
+    if let Some(set) = skate_fs::read(base.join("current.json")).ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|v| v["set"].as_str().map(str::to_owned))
         .filter(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit())) {
@@ -541,8 +541,8 @@ pub(crate) fn setup(
     server: Res<AssetServer>,
 ) {
     let directory = asset_directory(&config.asset_root);
-    let library = std::fs::read(directory.join("library-v3.json"))
-    .or_else(|_| std::fs::read(directory.join("library.json")))
+    let library = skate_fs::read(directory.join("library-v3.json"))
+    .or_else(|_| skate_fs::read(directory.join("library.json")))
     .ok()
     .and_then(|b| serde_json::from_slice::<Library>(&b).ok())
     .unwrap_or_default();
@@ -783,7 +783,7 @@ mod tests {
         let Ok(path) = std::env::var("SKATE_CAC_TEST_LIBRARY") else {
             return;
         };
-        let library: Library = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let library: Library = serde_json::from_slice(&skate_fs::read(path).unwrap()).unwrap();
         let parts = Parts {
             library,
             ..default()
@@ -864,7 +864,7 @@ mod stock_hair_audit {
     #[ignore = "requires prepared owned SKATE_CAC_TEST_LIBRARY"]
     fn stock_hair_keeps_authored_shading_and_textures_after_colour_restore() {
         let path=std::env::var("SKATE_CAC_TEST_LIBRARY").unwrap();
-        let library:Library=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let library:Library=serde_json::from_slice(&skate_fs::read(path).unwrap()).unwrap();
         let pairs:Vec<_>=library.models.iter().filter(|(_,p)|p.slot=="Hair")
             .flat_map(|(id,p)|p.materials.iter().map(move |mid|(id.clone(),mid.clone()))).collect();
         assert!(!pairs.is_empty());

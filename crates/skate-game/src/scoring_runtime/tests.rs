@@ -339,7 +339,7 @@ fn landed_multiplier_reaches_hud_across_repeated_tricks() {
     let data = authored();
     let mut r = Runtime::load(&data).unwrap();
     let root = std::path::PathBuf::from(std::env::var_os("SKATE3_ASSET_ROOT").unwrap());
-    let json = serde_json::from_slice(&std::fs::read(root.join("private/hud/runtime/trickdisplay.json")).unwrap()).unwrap();
+    let json = serde_json::from_slice(&skate_fs::read(root.join("private/hud/runtime/trickdisplay.json")).unwrap()).unwrap();
     let mut hud = hud_runtime::Runtime::load(&json, r.hud_input()).unwrap();
     let name = r.data.definitions.iter().find(|d| d.identifier == "kickflip").unwrap().encoded_name;
     let mut air_score = 0.0;

@@ -115,13 +115,13 @@ fn load(
         .and_then(|p| p.file_stem())
         .and_then(|name| {
             let bytes =
-                std::fs::read(config.asset_root.join("private/exposure-profiles.json")).ok()?;
+                skate_fs::read(config.asset_root.join("private/exposure-profiles.json")).ok()?;
             let mut profiles: std::collections::BTreeMap<String, Authored> =
                 serde_json::from_slice(&bytes).ok()?;
             profiles.remove(&name.to_string_lossy().to_lowercase())
         });
     let fallback = || {
-        std::fs::read(config.asset_root.join("private/exposure.json"))
+        skate_fs::read(config.asset_root.join("private/exposure.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<Authored>(&b).ok())
     };

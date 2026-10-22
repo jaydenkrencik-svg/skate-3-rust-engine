@@ -39,7 +39,7 @@ struct File {
 
 impl PhysicsSkeleton {
     pub fn load(path: &Path, bank_sha256: &str, name: &str) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let bytes = skate_fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let file: File = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
         if file.version != 1 || file.source_sha256 != bank_sha256 {
             return Err("Physics skeleton bank identity or format differs from animation data".into());

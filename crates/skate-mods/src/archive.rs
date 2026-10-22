@@ -1,13 +1,13 @@
 use crate::schema::{valid_id, Manifest};
 use std::collections::HashMap;
-use std::fs;
+use skate_fs as fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 pub struct Cache {
     entries: HashMap<PathBuf, (u64, PathBuf)>,
-    stamps: HashMap<PathBuf,(u64,std::time::SystemTime)>,
+    stamps: HashMap<PathBuf,(u64,web_time::SystemTime)>,
     session: Option<PathBuf>,
     next: u64,
 }
@@ -19,7 +19,7 @@ impl Cache {
         let metadata=fs::metadata(archive).map_err(|e|e.to_string())?;
         let stamp=(metadata.len(),metadata.modified().map_err(|e|e.to_string())?);
         if self.stamps.get(archive)==Some(&stamp) {
-            if let Some((_,path))=self.entries.get(archive) {if path.is_dir(){return Ok(path.clone());}}
+            if let Some((_,path))=self.entries.get(archive) {if skate_fs::is_dir(&path){return Ok(path.clone());}}
         }
         let bytes = fs::read(archive).map_err(|e| e.to_string())?;
         let hash = {
@@ -30,14 +30,14 @@ impl Cache {
             h
         };
         if let Some((prev, path)) = self.entries.get(archive) {
-            if *prev == hash && path.is_dir() {
+            if *prev == hash && skate_fs::is_dir(&path) {
                 self.stamps.insert(archive.to_owned(),stamp);
                 return Ok(path.clone());
             }
         }
         if self.session.is_none() {
             let cache = root.join(".cache");
-            if cache.exists()
+            if skate_fs::exists(&cache)
                 && fs::symlink_metadata(&cache)
                     .map_err(|e| e.to_string())?
                     .file_type()
@@ -49,15 +49,15 @@ impl Cache {
             if !cache
                 .canonicalize()
                 .map_err(|e| e.to_string())?
-                .starts_with(root.canonicalize().map_err(|e| e.to_string())?)
+                .starts_with(skate_fs::canonicalize(&root).map_err(|e| e.to_string())?)
             {
                 return Err("ZIP cache escapes mods folder".into());
             }
-            let nonce = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let nonce = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map_err(|e| e.to_string())?
                 .as_nanos();
-            let session = cache.join(format!("{}-{nonce}", std::process::id()));
+            let session = cache.join(format!("{}-{nonce}", skate_fs::process_id()));
             fs::create_dir(&session).map_err(|e| e.to_string())?;
             self.session = Some(session);
         }
@@ -108,8 +108,8 @@ impl Drop for Cache {
     fn drop(&mut self) {
         if let Some(path) = &self.session {
             if let (Ok(actual), Ok(parent)) = (
-                path.canonicalize(),
-                path.parent().unwrap().canonicalize(),
+                skate_fs::canonicalize(&path),
+                skate_fs::canonicalize(&path.parent().unwrap()),
             ) {
                 if actual.parent() == Some(parent.as_path())
                     && actual.file_name() == path.file_name()
@@ -147,9 +147,9 @@ impl std::ops::Deref for PackageRoot {
 /// [`validate_package_content`], also returning an owner of the package's root.
 /// A ZIP's extraction stays alive until the returned root is dropped.
 pub fn validate_package_content_at(path: &Path) -> Result<(Manifest, Option<crate::audio_content::Loaded>, PackageRoot), String> {
-    let source = path.canonicalize().map_err(|e| e.to_string())?;
+    let source = skate_fs::canonicalize(&path).map_err(|e| e.to_string())?;
     let mut cache = Cache::default();
-    let root = if source.is_dir() {
+    let root = if skate_fs::is_dir(&source) {
         source.clone()
     } else {
         let parent = source.parent().ok_or("Missing package parent")?;
@@ -164,6 +164,7 @@ pub fn validate_package_content_at(path: &Path) -> Result<(Manifest, Option<crat
     if source.starts_with('\u{1b}') {
         return Err("Lua bytecode is unsupported".into());
     }
+    #[cfg(not(target_arch = "wasm32"))]
     mlua::Lua::new()
         .load(source)
         .set_mode(mlua::chunk::ChunkMode::Text)
@@ -182,8 +183,8 @@ pub fn read_bounded(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, 
     {
         return Err("Use a relative path without traversal".into());
     }
-    let root = root.canonicalize().map_err(|e| e.to_string())?;
-    let path = root.join(path).canonicalize().map_err(|e| e.to_string())?;
+    let root = skate_fs::canonicalize(&root).map_err(|e| e.to_string())?;
+    let path = skate_fs::canonicalize(&root.join(path)).map_err(|e| e.to_string())?;
     if !path.starts_with(&root) {
         return Err("Asset escapes mod root".into());
     }
@@ -209,7 +210,7 @@ pub fn fingerprint(root: &Path) -> Result<u64, String> {
             if name.to_string_lossy().starts_with('.') {
                 continue;
             }
-            if path.is_dir() {
+            if skate_fs::is_dir(&path) {
                 walk(&path, out)?;
             } else {
                 out.push(path);
@@ -246,7 +247,7 @@ pub fn write_temp(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// Unchanged files are statted, not reread. Explicit rescans force content reads.
 #[derive(Default)]
-pub(crate) struct Fingerprints {entries:HashMap<PathBuf,(Vec<(PathBuf,u64,std::time::SystemTime)>,u64)>}
+pub(crate) struct Fingerprints {entries:HashMap<PathBuf,(Vec<(PathBuf,u64,web_time::SystemTime)>,u64)>}
 impl Fingerprints {
     #[cfg(test)]
     pub fn get(&mut self,root:&Path,force:bool)->Result<u64,String> {
@@ -255,7 +256,7 @@ impl Fingerprints {
     /// The package's fingerprint and the files (relative, `/`-separated) whose size or time
     /// changed, appeared or went since the last call (every file on the first call).
     pub fn get_with_changes(&mut self,root:&Path,force:bool)->Result<(u64,Vec<String>),String> {
-        fn walk(dir:&Path,out:&mut Vec<(PathBuf,u64,std::time::SystemTime)>)->Result<(),String> {
+        fn walk(dir:&Path,out:&mut Vec<(PathBuf,u64,web_time::SystemTime)>)->Result<(),String> {
             for entry in fs::read_dir(dir).map_err(|e|e.to_string())? {
                 let entry=entry.map_err(|e|e.to_string())?;
                 if entry.file_name().to_string_lossy().starts_with('.') {continue;}
@@ -283,7 +284,7 @@ mod fingerprint_tests {
  use super::*;
  #[test]
  fn validated_zip_files_survive_until_the_returned_owner_is_dropped() {
-  let parent=std::env::temp_dir().join(format!("skate-validated-zip-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+  let parent=std::env::temp_dir().join(format!("skate-validated-zip-{}-{}",std::process::id(),web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_nanos()));
   fs::create_dir_all(&parent).unwrap();
   let archive=parent.join("test.zip");
   let mut zip=zip::ZipWriter::new(fs::File::create(&archive).unwrap());
@@ -296,7 +297,7 @@ mod fingerprint_tests {
   let extracted=root.as_path().to_owned();
   assert_eq!(fs::read(root.join("main.lua")).unwrap(),b"return {}");
   drop(root);
-  assert!(!extracted.exists());
+  assert!(!skate_fs::exists(&extracted));
   fs::remove_dir_all(parent).unwrap();
  }
 
@@ -331,8 +332,8 @@ mod fingerprint_tests {
  #[ignore="headless installed-package scan benchmark"]
  fn compare_unchanged_skyline_scans() {
   let root=PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/Skyline_Drive_Mod");
-  let mut cache=Fingerprints::default();let expected=cache.get(&root,false).unwrap();let begin=std::time::Instant::now();
-  for _ in 0..20{assert_eq!(fingerprint(&root).unwrap(),expected);}let eager=begin.elapsed();let begin=std::time::Instant::now();
+  let mut cache=Fingerprints::default();let expected=cache.get(&root,false).unwrap();let begin=web_time::Instant::now();
+  for _ in 0..20{assert_eq!(fingerprint(&root).unwrap(),expected);}let eager=begin.elapsed();let begin=web_time::Instant::now();
   for _ in 0..20{assert_eq!(cache.get(&root,false).unwrap(),expected);}let cached=begin.elapsed();
   eprintln!("SCAN_BENCH eager_ms={:.3} cached_ms={:.3}",eager.as_secs_f64()*50.,cached.as_secs_f64()*50.);
  }

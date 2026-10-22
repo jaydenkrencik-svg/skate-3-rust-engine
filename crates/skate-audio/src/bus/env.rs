@@ -580,11 +580,11 @@ mod timing {
             0.5, 0.2, 0.6, 1.0, 1.0, 270.0, 5000.0, 0.5, 0.45, 500.0, 0.75, 0.3, 0.3, 1.0, 1.0, 90.0, 5000.0, 0.51, 0.5, 500.0, 0.75,
             0.28, 0.25,
         ]));
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         env.request(DEFAULT_PRESET);
         println!("request {:?}", t.elapsed());
         for b in 0..5 {
-            let t = std::time::Instant::now();
+            let t = web_time::Instant::now();
             let mut master = [[0.0f32; BLOCK]; 6];
             env.render(&[0.1; BLOCK], &mut master);
             println!("block {b}: {:?}", t.elapsed());

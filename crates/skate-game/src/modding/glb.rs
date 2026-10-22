@@ -21,7 +21,7 @@ mod tests {
     fn named_node_hull_is_body_local_not_scene_translated() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../sdk/examples/skyline/skyline.glb");
-        if !path.is_file() {
+        if !skate_fs::is_file(&path) {
             return;
         }
         for name in ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"] {

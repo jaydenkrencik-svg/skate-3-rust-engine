@@ -145,7 +145,7 @@ struct Data {
 /// An overlay take's rate and length from its WAV header (0 when unreadable: the take still plays
 /// from its PCM when picked).
 fn take_of(path: &std::path::Path) -> Take {
-    let pcm = std::fs::read(path).ok().and_then(|b| super::library::wav_pcm(&b));
+    let pcm = skate_fs::read(path).ok().and_then(|b| super::library::wav_pcm(&b));
     let (rate, samples) = pcm.map_or((0, 0), |p| (p.rate, p.channels.first().map_or(0, Vec::len) as u32));
     Take { offset: 0, size: 0, rate, samples }
 }
@@ -363,7 +363,7 @@ struct RecordJson {
 /// `mods`: the overlays' replaced takes by (clip name without `.dat`, take) and extra takes by
 /// clip (`Library::speech_mods`; empty without overlays).
 fn load(index_path: &std::path::Path, audio: Option<PathBuf>, mods: &(HashMap<(String, u32), PathBuf>, HashMap<String, Vec<PathBuf>>)) -> Result<Data, String> {
-    let text = std::fs::read_to_string(index_path).map_err(|e| format!("{}: {e}", index_path.display()))?;
+    let text = skate_fs::read_to_string(index_path).map_err(|e| format!("{}: {e}", index_path.display()))?;
     let json: IndexJson = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", index_path.display()))?;
     let mut clips = Vec::with_capacity(json.clips.len());
     let mut ids = Vec::with_capacity(json.clips.len());
@@ -467,7 +467,7 @@ impl Voices<'_> {
                 audio.join(stem).join(format!("{:02}.wav", line.take))
             }
         };
-        let pcm = match std::fs::read(&path).ok().and_then(|b| super::library::wav_pcm(&b)) {
+        let pcm = match skate_fs::read(&path).ok().and_then(|b| super::library::wav_pcm(&b)) {
             Some(p) => p,
             None => {
                 if !*self.missing {
@@ -993,11 +993,11 @@ mod tests {
     #[test]
     fn mod_takes_replace_and_extend_a_clip() {
         let dir = std::env::temp_dir().join(format!("skate-speech-mods-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(&dir).unwrap();
         let index = dir.join("livingworld.json");
         let take = serde_json::json!({"offset": 0, "size": 10, "rate": 32000, "samples": 100});
-        std::fs::write(&index, serde_json::json!({
+        skate_fs::write(&index, serde_json::json!({
             "clips": [
                 {"name": "501_59_busm1_Warn_n.dat", "id": 7, "takes": [take, take]},
                 {"name": "502_59_busm1_Other_n.dat", "id": 8, "takes": [take]}
@@ -1005,8 +1005,8 @@ mod tests {
             "rules": {"bank": 1, "sub_bank": 2, "events": []}
         }).to_string()).unwrap();
         let wav = crate::game_audio::library::tests::test_wav(2205, 22050, 99);
-        std::fs::write(dir.join("r.wav"), &wav).unwrap();
-        std::fs::write(dir.join("e.wav"), &wav).unwrap();
+        skate_fs::write(dir.join("r.wav"), &wav).unwrap();
+        skate_fs::write(dir.join("e.wav"), &wav).unwrap();
         let plain = load(&index, Some(dir.clone()), &Default::default()).unwrap();
         assert!(plain.mod_takes.is_empty());
         assert_eq!(plain.index.clips[0].takes.len(), 2);
@@ -1022,7 +1022,7 @@ mod tests {
         assert_eq!(data.mod_takes.get(&(0, 1)), Some(&dir.join("r.wav")));
         assert_eq!(data.mod_takes.get(&(0, 2)), Some(&dir.join("e.wav")));
         assert_eq!(data.index.clips[1].takes.len(), 1, "other clips stay");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     /// As `native::mixmap_frame`: the category gains.
@@ -1159,11 +1159,11 @@ mod tests {
     #[ignore = "needs the private install data and the recomp level export"]
     fn speech_levels_follow_the_recomp() {
         let base = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
-        let Ok(bytes) = std::fs::read(base.join("assets/private/audio/aems/MixMapSK8.mxb")) else { panic!("missing private data: no MixMap") };
+        let Ok(bytes) = skate_fs::read(base.join("assets/private/audio/aems/MixMapSK8.mxb")) else { panic!("missing private data: no MixMap") };
         let mut rows = Vec::new();
         let levels = std::env::var_os("SKATE_SPEECH_LEVELS").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
         for s in ["163809", "164620", "180430"] {
-            let Some(Ok(text)) = levels.as_ref().map(|d| std::fs::read_to_string(d.join(format!("levels_{s}.json")))) else { continue };
+            let Some(Ok(text)) = levels.as_ref().map(|d| skate_fs::read_to_string(d.join(format!("levels_{s}.json")))) else { continue };
             let list: Vec<LevelRow> = serde_json::from_str(&text).unwrap();
             rows.extend(list.into_iter().filter(|r| r.geometry.is_some() && r.first.gain.is_some()).map(|r| (s, r)));
         }
@@ -1285,9 +1285,9 @@ mod tests {
         let Ok(library) = crate::game_audio::Library::load(root) else { panic!("missing private data: no audio install") };
         let Some((index_path, _)) = library.speech("maincast") else { panic!("missing private data: no main-cast index (stage_world_audio.py --maincast)") };
         let dir = std::env::var_os("SKATE_MAINCAST_LINES").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
-        let Some(Ok(text)) = dir.map(|d| std::fs::read_to_string(d.join("maincast_lines.json"))) else { panic!("missing private data: SKATE_MAINCAST_LINES (maincast_reads.py --json)") };
+        let Some(Ok(text)) = dir.map(|d| skate_fs::read_to_string(d.join("maincast_lines.json"))) else { panic!("missing private data: SKATE_MAINCAST_LINES (maincast_reads.py --json)") };
         let rows: Vec<CastRow> = serde_json::from_str(&text).unwrap();
-        let json: IndexJson = serde_json::from_str(&std::fs::read_to_string(&index_path).unwrap()).unwrap();
+        let json: IndexJson = serde_json::from_str(&skate_fs::read_to_string(&index_path).unwrap()).unwrap();
         let ids: HashMap<String, u16> = json.clips.iter().filter_map(|c| Some((c.name.clone(), c.id?))).collect();
         let data = load(&index_path, None, &Default::default()).unwrap();
         let world = library.world_tuning();

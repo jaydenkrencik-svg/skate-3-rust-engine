@@ -1,6 +1,7 @@
 //! Transport-neutral, bounded snapshot protocol. No platform identity or SDK types.
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 mod codec;
 pub mod lobby;
 pub mod blob;

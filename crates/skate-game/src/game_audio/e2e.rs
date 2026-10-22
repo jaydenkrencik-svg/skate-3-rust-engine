@@ -39,7 +39,7 @@ fn e2e_render() {
     let library = super::Library::load(root).expect("install");
     let mxb = library.read(library.aems().mixmap.as_ref().expect("MixMap")).unwrap();
     let only = std::env::var("E2E_ONLY").ok();
-    let mut paths: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv") && !p.file_stem().unwrap().to_string_lossy().contains('.')).collect();
+    let mut paths: Vec<_> = skate_fs::read_dir(&dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv") && !p.file_stem().unwrap().to_string_lossy().contains('.')).collect();
     paths.sort();
     for path in paths {
         let name = path.file_stem().unwrap().to_string_lossy().to_string();
@@ -140,26 +140,26 @@ fn e2e_render() {
         // E2E_SLEW_LOG=1: the bed's turn input, |COM v|, special, I and brake per call
         // (`<name>.ours.slew.tsv`).
         let mut slew_log = std::env::var("E2E_SLEW_LOG").is_ok_and(|v| v == "1").then(|| {
-            let mut w = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.slew.tsv"))).unwrap());
+            let mut w = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.slew.tsv"))).unwrap());
             writeln!(w, "frame	eval	turn_in	com_speed	turn_I	turn_signed	braking	brake").unwrap();
             w
         });
         let seams = skate_audio::player::tuning::PlayerTuning { seam_wobbles: p.tuning.seam_wobbles.clone(), ..Default::default() };
         let mut script = Script::default();
-        let mut out = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.f32"))).unwrap());
-        let mut voices = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.voices.tsv"))).unwrap());
+        let mut out = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.f32"))).unwrap());
+        let mut voices = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.voices.tsv"))).unwrap());
         writeln!(voices, "frame\tbank\tslot\tgain\tpitch").unwrap();
         // The body poster's messages: the row where its count changed, the count and the digest.
-        let mut body = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.body.tsv"))).unwrap());
+        let mut body = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.body.tsv"))).unwrap());
         writeln!(body, "frame\tposts\tdigest").unwrap();
         let mut body_seen = p.body_trace();
         let mut bodymsg = body_log.then(|| {
-            let mut w = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.bodymsg.tsv"))).unwrap());
+            let mut w = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.bodymsg.tsv"))).unwrap());
             writeln!(w, "frame\trow\tregion\timpact\tcom216\tmat_a\tmat_b\ttier_a\ttier_b\tlevel_a\tlevel_b").unwrap();
             w
         });
         // The deck poster's messages, the same way.
-        let mut deck = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.deck.tsv"))).unwrap());
+        let mut deck = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.deck.tsv"))).unwrap());
         writeln!(deck, "frame\tposts\tdigest").unwrap();
         let mut deck_seen = p.deck_trace();
         let (mut owed, blocks_per_frame) = (0.0f64, 48_000.0 / 256.0 / 60.0);
@@ -250,7 +250,7 @@ fn e2e_render() {
                 }
                 continue;
             }
-            let t0 = std::time::Instant::now();
+            let t0 = web_time::Instant::now();
             // E2E_SUBSTEPS: every ticking call of a row is a pass on the row's sample.
             if call > 0 {
                 cues.publish(row_riding);
@@ -283,9 +283,9 @@ fn e2e_render() {
             bed.write_inputs(&mut m, &s, !p.rolling_on);
             let speed_scale = bed.push_scale();
             let loose = PlayerAudio::loose_board(&s, &riding);
-            let t1 = std::time::Instant::now();
+            let t1 = web_time::Instant::now();
             p.process(&mut m, &s, &mut shared.lock().unwrap(), speed_scale, loose);
-            let t2 = std::time::Instant::now();
+            let t2 = web_time::Instant::now();
             if p.body_trace() != body_seen {
                 body_seen = p.body_trace();
                 writeln!(body, "{frame}\t{}\t{:016x}", body_seen.0, body_seen.1).unwrap();
@@ -302,7 +302,7 @@ fn e2e_render() {
             for _ in 0..mix_calls {
                 m.tick(skate_audio::mixmap::cadence::CONSOLE_DT);
             }
-            let t3 = std::time::Instant::now();
+            let t3 = web_time::Instant::now();
             if let Some((first, ticks)) = teleport {
                 let k = frame as i64 - first as i64 + 1;
                 p.teleport_effect = (1..=ticks as i64 + 2).contains(&k).then(|| (k as f32 / ticks as f32).min(1.0));
@@ -310,7 +310,7 @@ fn e2e_render() {
             p.update(&m, &s, &mut shared.lock().unwrap(), speed_scale, loose);
             shared.lock().unwrap().mixer.buses.flange.frame(std::array::from_fn(|i| m.level(keys::REVERB, i)));
             shared.lock().unwrap().mixer.buses.env.scale_frame(m.level(keys::REVERB, 4));
-            let t4 = std::time::Instant::now();
+            let t4 = web_time::Instant::now();
             let routed = p.rolling_on.then(|| (std::mem::take(&mut p.routed.grains), p.routed.primary));
             bed.slew_calls = Some(mix_calls);
             super::grain_bed::step(&mut bed, &library, &m, &shared, &riding, call_dt, &seams, routed);
@@ -318,16 +318,16 @@ fn e2e_render() {
                 let (turn, brake) = bed.slews();
                 writeln!(w, "{frame}	{mix_calls}	{}	{}	{}	{turn}	{}	{brake}", s.turn, s.com_speed(), turn.abs(), u8::from(riding.braking)).unwrap();
             }
-            let t5 = std::time::Instant::now();
+            let t5 = web_time::Instant::now();
             if timing && frame >= 60 {
-                let us = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1e6;
+                let us = |a: web_time::Instant, b: web_time::Instant| (b - a).as_secs_f64() * 1e6;
                 game_us.push((us(t0, t5), frame - 60, [us(t0, t1), us(t1, t2), us(t2, t3), us(t3, t4), us(t4, t5)]));
             }
             owed += blocks_per_frame / per_row as f64;
             let mut rt = shared.lock().unwrap();
             while owed >= 1.0 {
                 owed -= 1.0;
-                let tb = std::time::Instant::now();
+                let tb = web_time::Instant::now();
                 let bus = rt.render_block();
                 if timing && frame >= 60 {
                     block_us.push(tb.elapsed().as_secs_f64() * 1e6);
@@ -375,7 +375,7 @@ fn e2e_render() {
         if timing && !game_us.is_empty() {
             // The raw times for the optimisation bench (`tools/audio-bench/`):
             // one line per measured game-thread call and per rendered block.
-            let mut raw = std::io::BufWriter::new(std::fs::File::create(dir.join(format!("{name}.ours.timing.tsv"))).unwrap());
+            let mut raw = std::io::BufWriter::new(skate_fs::File::create(dir.join(format!("{name}.ours.timing.tsv"))).unwrap());
             writeln!(raw, "kind\tus").unwrap();
             for (total, _, _) in &game_us {
                 writeln!(raw, "frame\t{total:.2}").unwrap();

@@ -92,7 +92,7 @@ mod tests {
     fn retail_layouts_come_from_the_banks_programs() {
         let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets"));
         let Ok(library) = Library::load(root) else { panic!("missing private data: no audio install") };
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         for bank in ["Main_Ambience_Crossfade_DT", "Main_Ambience_Crossfade_Ind", "Main_Ambience_Crossfade_Uni"] {
             let (layouts, why) = build(&library, bank);
             assert_eq!((layouts.source, why), (Source::Program, None), "{bank}");
@@ -115,12 +115,12 @@ mod tests {
         let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets"));
         let Ok(plain) = Library::load(root) else { panic!("missing private data: no audio install") };
         let mods = std::env::temp_dir().join(format!("skate-crossfade-mod-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&mods);
-        std::fs::create_dir_all(mods.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&mods);
+        skate_fs::create_dir_all(mods.join("audio")).unwrap();
         for i in 0..10 {
-            std::fs::write(mods.join(format!("audio/f{i}.wav")), super::super::library::tests::test_wav(4800, 48000, 100 + i)).unwrap();
+            skate_fs::write(mods.join(format!("audio/f{i}.wav")), super::super::library::tests::test_wav(4800, 48000, 100 + i)).unwrap();
         }
-        std::fs::copy(plain.path(&plain.aems().banks["Main_Ambience_Crossfade_Ind"]), mods.join("audio/prog.abk")).unwrap();
+        skate_fs::copy(plain.path(&plain.aems().banks["Main_Ambience_Crossfade_Ind"]), mods.join("audio/prog.abk")).unwrap();
         let wavs: Vec<String> = (0..10).map(|i| format!("audio/f{i}.wav")).collect();
         let o: skate_mods::audio_content::AudioOverlay = serde_json::from_value(serde_json::json!({"version": 1, "add": {
             "banks": {"MOD_fade_wav": {"samples": wavs[..2]}, "MOD_fade_prog": {"abk": "audio/prog.abk", "samples": wavs}, "MOD_fade_none": {"samples": wavs[..1]}},
@@ -141,6 +141,6 @@ mod tests {
         let (none, why) = build(&library, "MOD_fade_none");
         assert_eq!(none.source, Source::None);
         assert!(why.unwrap().contains("no program"));
-        let _ = std::fs::remove_dir_all(mods);
+        let _ = skate_fs::remove_dir_all(mods);
     }
 }

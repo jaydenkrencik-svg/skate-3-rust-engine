@@ -645,7 +645,7 @@ mod tests {
         for (i, &at) in positions.iter().enumerate() {
             for step in 0..20 {
                 let ear = at + Vec3::new(step as f32 * 5.0, 0.0, 0.0);
-                let t = std::time::Instant::now();
+                let t = web_time::Instant::now();
                 prefetch_near(&mut state, &mut native, &library, ear);
                 let dt = t.elapsed();
                 if calls == 0 {

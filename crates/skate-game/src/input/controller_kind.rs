@@ -7,6 +7,8 @@
 //! nothing here changes gameplay. It is for troubleshooting (log, Esc menu),
 //! mods (`sdk.input.controller`) and future per-pad presentation (prompt
 //! glyphs, see `PromptStyle`).
+// XInput and SDL identity are native-only; the browser build compiles their shared helpers unused.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 use serde::Serialize;
 
 /// Which backend produced the slot.
@@ -15,6 +17,8 @@ use serde::Serialize;
 pub(crate) enum Backend {
     Sdl,
     Xinput,
+    /// The browser Gamepad API (web build).
+    Browser,
 }
 
 /// Coarse controller kind. Stable snake_case names are the mod-facing form.
@@ -140,6 +144,7 @@ impl ControllerKind {
         }
         text += &match self.backend {
             Backend::Sdl => format!(", SDL via {}", if self.driver.is_empty() { "?" } else { &self.driver }),
+            Backend::Browser => format!(", browser {}", if self.driver.is_empty() { "?" } else { &self.driver }),
             Backend::Xinput => format!(
                 ", XInput subtype {}{}",
                 self.xinput_subtype.unwrap_or(0),
@@ -206,6 +211,7 @@ pub(crate) fn model(user: &[Model], vendor: u16, product: u16) -> Option<Model> 
 }
 
 /// SDL_GamepadType → family. The model table refines Xbox One pads into Elite.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn family_from_sdl(kind: sdl3::gamepad::GamepadType) -> Family {
     use sdl3::gamepad::GamepadType as T;
     match kind {
@@ -239,6 +245,7 @@ pub(crate) fn family_from_xinput_subtype(subtype: u8) -> Family {
 }
 
 /// What an SDL gamepad reports when it is opened.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) struct SdlReport {
     pub name: String,
     pub gamepad_type: sdl3::gamepad::GamepadType,
@@ -250,6 +257,7 @@ pub(crate) struct SdlReport {
     pub misc_button: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn from_sdl(report: SdlReport, user: &[Model]) -> ControllerKind {
     let mut family = family_from_sdl(report.gamepad_type);
     let model = report.vendor_id.zip(report.product_id).and_then(|(v, p)| model(user, v, p));
@@ -314,6 +322,48 @@ pub(crate) fn from_xinput(caps: XinputCaps, user: &[Model]) -> ControllerKind {
         xinput_subtype: Some(caps.subtype),
         wireless: Some(caps.flags & XINPUT_CAPS_WIRELESS != 0),
         // XInput has no paddle inputs.
+        paddles: 0,
+        hardware_paddles: model.map_or(0, |m| m.paddles),
+        touchpad: false,
+        misc_button: false,
+        prompt_style: family.prompt_style(),
+    }
+}
+
+/// Vendor/product from a Gamepad API id. Chromium reports
+/// `Name (STANDARD GAMEPAD Vendor: 045e Product: 028e)`, Firefox `045e-028e-Name`.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn browser_vendor_product(id: &str) -> Option<(u16, u16)> {
+    let hex = |s: &str| u16::from_str_radix(s.get(..4)?, 16).ok();
+    if let (Some(v), Some(p)) = (id.find("Vendor: "), id.find("Product: ")) {
+        return hex(&id[v + 8..]).zip(hex(&id[p + 9..]));
+    }
+    let mut parts = id.splitn(3, '-');
+    let (vendor, product) = (parts.next()?, parts.next()?);
+    (vendor.len() == 4 && product.len() == 4).then(|| hex(vendor).zip(hex(product))).flatten()
+}
+
+/// A Gamepad API pad. `standard` is the browser's "standard" mapping, the only
+/// one whose button and axis order is defined.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn from_browser(id: &str, standard: bool, user: &[Model]) -> ControllerKind {
+    let vendor_product = browser_vendor_product(id);
+    let model = vendor_product.and_then(|(v, p)| model(user, v, p));
+    let family = model.as_ref().and_then(|m| m.family)
+        .unwrap_or(if standard { Family::Standard } else { Family::Unknown });
+    let name = id.split(" (").next().filter(|n| !n.is_empty() && !n.contains('-'))
+        .map(str::to_owned)
+        .or_else(|| model.as_ref().map(|m| m.name.clone()))
+        .unwrap_or_else(|| family.name().to_string());
+    ControllerKind {
+        family,
+        name,
+        vendor_id: vendor_product.map(|v| v.0),
+        product_id: vendor_product.map(|v| v.1),
+        backend: Backend::Browser,
+        driver: if standard { "standard mapping".into() } else { "unmapped".into() },
+        xinput_subtype: None,
+        wireless: None,
         paddles: 0,
         hardware_paddles: model.map_or(0, |m| m.paddles),
         touchpad: false,

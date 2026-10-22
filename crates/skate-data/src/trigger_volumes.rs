@@ -197,8 +197,8 @@ pub enum Origin {
 /// `TVOL` extension (so a converted or edited sidecar can replace it); no
 /// source means no volumes.
 pub fn load_for_map(map_path: Option<&Path>, map: Option<&SkateMap>) -> Result<(Vec<TriggerVolumeRecord>, Origin), String> {
-    if let Some(path) = map_path.map(sidecar_path).filter(|p| p.is_file()) {
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if let Some(path) = map_path.map(sidecar_path).filter(|p| skate_fs::is_file(&p)) {
+        let bytes = skate_fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let file = parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         return Ok((file.volumes, Origin::Sidecar(path)));
     }

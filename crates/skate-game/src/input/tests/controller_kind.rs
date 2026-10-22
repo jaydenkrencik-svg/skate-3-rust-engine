@@ -162,3 +162,15 @@ fn xinput_identity_of_connected_pad() {
     }
     assert!(kinds.iter().any(Option::is_some), "no XInput pad connected");
 }
+
+#[test]
+fn browser_ids_yield_vendor_product_for_chromium_and_firefox() {
+    assert_eq!(browser_vendor_product("Xbox 360 Controller (XInput STANDARD GAMEPAD)"), None);
+    assert_eq!(
+        browser_vendor_product("Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)"),
+        Some((0x054c, 0x0ce6))
+    );
+    assert_eq!(browser_vendor_product("045e-028e-Microsoft X-Box 360 pad"), Some((0x045e, 0x028e)));
+    let kind = from_browser("Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)", true, &[]);
+    assert_eq!((kind.backend, kind.name.as_str()), (Backend::Browser, "Wireless Controller"));
+}

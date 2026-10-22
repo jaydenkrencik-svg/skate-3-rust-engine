@@ -75,7 +75,7 @@ fn audio_state_capture() {
     let text = lines.join("\n");
     let Some(path) = std::env::var_os("AUDIO_STATE_CAPTURE") else { return };
     let path = std::path::Path::new(&path);
-    match std::fs::read_to_string(path) {
+    match skate_fs::read_to_string(path) {
         Ok(base) => {
             let (a, b): (Vec<&str>, Vec<&str>) = (base.lines().collect(), text.lines().collect());
             assert_eq!(a.len(), b.len(), "sample count");
@@ -85,7 +85,7 @@ fn audio_state_capture() {
             eprintln!("AUDIO_STATE_CAPTURE identical: {} samples", b.len());
         }
         Err(_) => {
-            std::fs::write(path, text).unwrap();
+            skate_fs::write(path, text).unwrap();
             eprintln!("AUDIO_STATE_CAPTURE written: {} samples", lines.len());
         }
     }

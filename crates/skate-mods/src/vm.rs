@@ -1,15 +1,16 @@
-use crate::{lua_list::{list, opt_list}, read_bounded, Manifest};
+use crate::{lua_list::{list, opt_list}, Manifest};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::read_bounded;
+#[cfg(not(target_arch = "wasm32"))]
 use mlua::{HookTriggers, Lua, LuaOptions, LuaSerdeExt, StdLib, Table, VmState};
 use serde::Deserialize;
 use serde_json::Value;
 use skate_dynamics::{BodyDesc, JointMotorDesc, JointSpringDesc, Shape};
-use std::{
-    collections::BTreeMap,
-    path::Path,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+use std::{collections::BTreeMap, path::Path, sync::Arc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Mutex,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1099,6 +1100,7 @@ fn default_snapshot() -> Value {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn json_to_lua(lua: &Lua, value: &Value) -> mlua::Result<mlua::Value> {
     if value.is_null() {
         return Ok(mlua::Value::Nil);
@@ -1122,11 +1124,12 @@ fn json_to_lua(lua: &Lua, value: &Value) -> mlua::Result<mlua::Value> {
 
 // Only a root field that Lua reads is converted. Returned field tables are
 // ordinary complete Lua tables, preserving length, pairs and serde behavior.
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn lazy_snapshot(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>)->mlua::Result<Table> {
     lazy_snapshot_fields(lua, snapshot, physics, crate::SnapshotFields::default())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn lazy_snapshot_fields(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>, fields:crate::SnapshotFields)->mlua::Result<Table> {
     let defaults=std::sync::LazyLock::force(&SNAPSHOT_DEFAULTS);
     let table=lua.create_table()?;
@@ -1156,6 +1159,7 @@ fn lazy_snapshot_fields(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>, fi
 }
 static SNAPSHOT_DEFAULTS:std::sync::LazyLock<Value>=std::sync::LazyLock::new(default_snapshot);
 
+#[cfg(not(target_arch = "wasm32"))]
 fn query_value(lua: &Lua, value: Value) -> mlua::Result<mlua::Value> {
     json_to_lua(lua, &value)
 }
@@ -1165,6 +1169,7 @@ pub const LUA_INSTRUCTIONS_PER_BUDGET_UNIT: usize = 1000;
 /// Per-callback instruction budget (each unit ~= 1000 Lua instructions).
 pub const LUA_BUDGET_UNITS: usize = 800;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Vm {
     lua: Lua,
     callbacks: Table,
@@ -1174,6 +1179,7 @@ pub struct Vm {
     queue: Arc<Mutex<Vec<Command>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Vm {
     pub fn new(
         root: &Path,
@@ -1501,6 +1507,33 @@ impl Vm {
     }
 }
 
+/// The browser build has no Lua yet: mlua's vendored C Lua does not build for
+/// wasm32-unknown-unknown. Packages load and validate, but every VM fails to
+/// start, so the manager reports the mod as failed and the game carries on.
+#[cfg(target_arch = "wasm32")]
+pub struct Vm;
+
+#[cfg(target_arch = "wasm32")]
+impl Vm {
+    pub fn new(
+        _root: &Path,
+        _manifest: &Manifest,
+        _settings: &BTreeMap<String, Value>,
+        _snapshot: &Value,
+    ) -> Result<Self, String> {
+        Err("Lua mods are not available in the browser build".into())
+    }
+
+    #[allow(dead_code)]
+    pub fn settings(&mut self, _settings: &BTreeMap<String, Value>) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn call_shared(&mut self,_name:&str,_payload:Value,_snapshot:&Arc<Value>,_physics:Option<Value>,_fields:&crate::SnapshotFields)->Result<Vec<Command>,String> {
+        Ok(Vec::new())
+    }
+}
+
 #[cfg(test)]
 mod driving_extension_tests {
     use super::*;
@@ -1527,11 +1560,11 @@ mod driving_extension_tests {
 
     #[test]
     fn real_lua_wrapper_crosses_serde_boundary() {
-        use std::time::{SystemTime,UNIX_EPOCH};
+        use web_time::{SystemTime, UNIX_EPOCH};
         let root=std::env::temp_dir().join(format!("skate-driving-api-{}-{}",
             std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             return { on_load=function()
                 sdk.camera.rig('chassis', {mode='hood', collision=false, fov_gain=0})
                 sdk.ui.canvas('dash', {visible=false, items={}})
@@ -1569,16 +1602,16 @@ mod driving_extension_tests {
         assert!(matches!(&out[4],Command::CameraFollow{body:None,..}));
         assert!(matches!(&out[5],Command::MultiplayerDebug{key,text} if key=="replication" && text=="Ready"));
         assert!(matches!(&out[6],Command::MultiplayerDebug{text,..} if text.is_empty()));
-        drop(vm);std::fs::remove_dir_all(root).unwrap();
+        drop(vm);skate_fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn camera_angle_api_crosses_the_lua_boundary() {
-        use std::time::{SystemTime,UNIX_EPOCH};
+        use web_time::{SystemTime, UNIX_EPOCH};
         let root=std::env::temp_dir().join(format!("skate-camera-angle-api-{}-{}",
             std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             return { on_load=function()
                 assert(sdk.capabilities.camera >= 4)
                 local a = sdk.camera.angle()
@@ -1613,7 +1646,7 @@ mod driving_extension_tests {
         assert!(!bad.validate());
         let far:Command=serde_json::from_value(json!({"kind":"camera_shot_tune","shot":"bl_chase","patch":{"PositionDistance":900}})).unwrap();
         assert!(!far.validate());
-        drop(vm);std::fs::remove_dir_all(root).unwrap();
+        drop(vm);skate_fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -1656,11 +1689,11 @@ mod model_collision_extension_tests {
 
     #[test]
     fn native_capabilities_debug_and_model_spawn_cross_real_lua_serde_boundary() {
-        use std::time::{SystemTime, UNIX_EPOCH};
+        use web_time::{SystemTime, UNIX_EPOCH};
         let root = std::env::temp_dir().join(format!("skate-model-api-{}-{}", std::process::id(),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             return {on_load=function()
                 assert(sdk.capabilities.solid_bridge == 3)
                 assert(sdk.capabilities.model_collision == 1)
@@ -1692,7 +1725,7 @@ mod model_collision_extension_tests {
             _ => panic!("wrong native spawn command"),
         }
         drop(vm);
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     /// `Manager::start` runs `on_load` with whatever snapshot it has, which on
@@ -1701,8 +1734,8 @@ mod model_collision_extension_tests {
     #[test]
     fn trigger_api_crosses_the_lua_serde_boundary() {
         let root = std::env::temp_dir().join(format!("skate-mods-triggers-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             return { on_load=function()
                 assert(sdk.capabilities.triggers == 1, 'capability')
                 local reset = sdk.triggers.get('tut_sksc_reset_vol01')
@@ -1740,7 +1773,7 @@ mod model_collision_extension_tests {
         let lobby = TriggerBoxOptions { half_extents: [1.; 3], group: Some("lobby".into()), ..bad };
         assert!(!lobby.validate());
         drop(vm);
-        std::fs::remove_dir_all(root).ok();
+        skate_fs::remove_dir_all(root).ok();
     }
 
     #[test]
@@ -1749,8 +1782,8 @@ mod model_collision_extension_tests {
             "skate-mods-null-snapshot-{}",
             std::process::id()
         ));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(
             root.join("main.lua"),
             r#"
             return {on_load=function()
@@ -1778,7 +1811,7 @@ mod model_collision_extension_tests {
         vm.call("on_load", Value::Null, &Value::Null)
             .expect("snapshot readers must not fault on a null snapshot");
         drop(vm);
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     /// A real snapshot must survive completion untouched, so the default cannot
@@ -1820,7 +1853,7 @@ mod graphics_mesh_buffer_tests {
     use super::*;
     use mlua::{Lua, LuaOptions, LuaSerdeExt, StdLib};
     use serde_json::json;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn mesh_buffer_write_rejects_empty_uv_table() {
@@ -1854,8 +1887,8 @@ mod graphics_mesh_buffer_tests {
                 .unwrap()
                 .as_nanos()
         ));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(
             root.join("main.lua"),
             r#"
             return { on_load=function()
@@ -1880,7 +1913,7 @@ mod graphics_mesh_buffer_tests {
         assert_eq!(out.len(), 1);
         assert!(matches!(out[0], Command::GraphicsMeshBufferWrite { .. }));
         drop(vm);
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1893,11 +1926,11 @@ mod graphics_mesh_buffer_tests {
                 .unwrap()
                 .as_nanos()
         ));
-        std::fs::create_dir_all(&root).unwrap();
+        skate_fs::create_dir_all(&root).unwrap();
         let png = include_bytes!("../tests/fixtures/texture.png");
-        std::fs::create_dir_all(root.join("textures")).unwrap();
-        std::fs::write(root.join("textures/test.png"), png).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(root.join("textures")).unwrap();
+        skate_fs::write(root.join("textures/test.png"), png).unwrap();
+        skate_fs::write(
             root.join("main.lua"),
             r#"
             return { on_load=function()
@@ -1929,7 +1962,7 @@ mod graphics_mesh_buffer_tests {
         assert!(matches!(out[1], Command::GraphicsMeshBufferAppend { .. }));
         assert!(matches!(out[2], Command::GraphicsMeshBufferAppend { .. }));
         drop(vm);
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     /// Mirrors Skyline skid strip helpers — single-point strips used to crash in norm(dot(nil)).
@@ -2012,8 +2045,8 @@ mod snapshot_performance_tests {
     #[test]
     fn timer_only_mods_observe_fresh_snapshots_and_keep_callback_order() {
         let root=std::env::temp_dir().join(format!("skate-timer-snapshot-{}",std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"),r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"),r#"
             return {on_load=function()
                 sdk.time.after('first',0.02,function()
                     assert(sdk.snapshot.tick==2 and sdk.time.elapsed==0.02)
@@ -2039,14 +2072,14 @@ mod snapshot_performance_tests {
             } else { assert!(commands.is_empty()); }
         }
         drop(vm);
-        std::fs::remove_file(root.join("main.lua")).unwrap();
-        std::fs::remove_dir(root).unwrap();
+        skate_fs::remove_file(root.join("main.lua")).unwrap();
+        skate_fs::remove_dir(root).unwrap();
     }
     #[test]
     fn incremental_collection_releases_native_frames_but_preserves_retained_snapshots() {
         let root=std::env::temp_dir().join(format!("skate-snapshot-gc-{}",std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"),r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"),r#"
             local first
             return {on_fixed_update=function(e)
                 if not first then first=sdk.snapshot end
@@ -2074,14 +2107,14 @@ mod snapshot_performance_tests {
             "discarded native snapshots must be reclaimed during dispatch");
         drop(vm);
         assert!(frames.iter().all(|f|f.upgrade().is_none()));
-        std::fs::remove_file(root.join("main.lua")).unwrap();
-        std::fs::remove_dir(root).unwrap();
+        skate_fs::remove_file(root.join("main.lua")).unwrap();
+        skate_fs::remove_dir(root).unwrap();
     }
     #[test]
     fn shared_native_fields_support_projected_full_and_retained_reads() {
         let root=std::env::temp_dir().join(format!("skate-shared-fields-{}",std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"),r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"),r#"
             local old
             return {on_update=function()
                 local current=sdk.rig.read({'tick'})
@@ -2107,7 +2140,7 @@ mod snapshot_performance_tests {
                 &Arc::new(serde_json::json!({"tick":tick})),None,&fields).unwrap();
             assert_eq!(fields["player_physics"]["joints"][0]["name"],"JOINT_LEFT_ARM");
         }
-        drop(vm);std::fs::remove_file(root.join("main.lua")).unwrap();std::fs::remove_dir(root).unwrap();
+        drop(vm);skate_fs::remove_file(root.join("main.lua")).unwrap();skate_fs::remove_dir(root).unwrap();
     }
     fn fixture()->Arc<Value> {
         let joints=(0..22).map(|i|serde_json::json!({"index":i,"name":"JOINT_LEFT_ARM","parameters":vec![0;16],"frames":vec![0;20],"load":{"solver_words":vec![0;96],"force":[1,2,3]}})).collect::<Vec<_>>();
@@ -2127,12 +2160,12 @@ mod snapshot_performance_tests {
     fn compare_eager_and_demand_driven_snapshot_cost() {
         let snapshot=fixture();let lua=Lua::new();let reads:mlua::Function=lua.load("return function(s) return s.player.score end").eval().unwrap();
         let iterations=120;let mods=6;
-        let begin=std::time::Instant::now();
+        let begin=web_time::Instant::now();
         for _ in 0..iterations {for _ in 0..mods {for _ in 0..3 {
             let full=json_to_lua(&lua,&complete(&snapshot)).unwrap();std::hint::black_box(reads.call::<i64>(full).unwrap());
         }}}
         let eager=begin.elapsed();lua.gc_collect().unwrap();
-        let begin=std::time::Instant::now();
+        let begin=web_time::Instant::now();
         for _ in 0..iterations {for _ in 0..mods {
             // Missing UI callback does no conversion; update/fixed read only player.
             for _ in 0..2 {let lazy=lazy_snapshot(&lua,snapshot.clone(),None).unwrap();std::hint::black_box(reads.call::<i64>(lazy).unwrap());}
@@ -2140,7 +2173,7 @@ mod snapshot_performance_tests {
         let lazy=begin.elapsed();
         lua.gc_collect().unwrap();
         let rig_reads:mlua::Function=lua.load("return function(s) local rig=s.player_physics; local n=#rig.contacts; for _,j in ipairs(rig.joints) do n=n+j.index end; return n end").eval().unwrap();
-        let begin=std::time::Instant::now();
+        let begin=web_time::Instant::now();
         for _ in 0..iterations {for mod_index in 0..mods {
             for callback in 0..2 {
                 let lazy=lazy_snapshot(&lua,snapshot.clone(),None).unwrap();
@@ -2183,8 +2216,8 @@ mod world_audio_tests {
     #[test]
     fn audio_capabilities_are_advertised() {
         let root = std::env::temp_dir().join(format!("skate-audio-capabilities-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             assert(sdk.capabilities.audio == 4, 'audio capability')
             assert(sdk.capabilities.world_audio == 4, 'world_audio capability')
             assert(sdk.capabilities.audio_content == 3, 'audio_content capability')
@@ -2197,8 +2230,8 @@ mod world_audio_tests {
             "author":"test","description":"test","entry":"main.lua","settings":{}
         })).unwrap();
         let loaded = Vm::new(&root, &manifest, &BTreeMap::new(), &Value::Null).map(|_| ());
-        std::fs::remove_file(root.join("main.lua")).unwrap();
-        std::fs::remove_dir(&root).unwrap();
+        skate_fs::remove_file(root.join("main.lua")).unwrap();
+        skate_fs::remove_dir(&root).unwrap();
         loaded.unwrap();
     }
 
@@ -2208,7 +2241,7 @@ mod world_audio_tests {
     #[test]
     fn world_audio_wrappers_and_the_test_publisher_run() {
         let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../mods/world-audio-test"));
-        let manifest: Manifest = serde_json::from_slice(&std::fs::read(root.join("mod.json")).unwrap()).unwrap();
+        let manifest: Manifest = serde_json::from_slice(&skate_fs::read(root.join("mod.json")).unwrap()).unwrap();
         manifest.validate().unwrap();
         assert!(!manifest.enabled_by_default, "the dev test mod is opt-in");
         let settings: BTreeMap<String, Value> = manifest.settings.iter().map(|(k, s)| (k.clone(), s.default.clone())).collect();
@@ -2322,8 +2355,8 @@ mod world_audio_tests {
             assert!(serde_json::from_value::<Command>(value.clone()).is_err(), "{value}");
         }
         let root = std::env::temp_dir().join(format!("skate-audio-api-lua-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             local M = {}
             function M.on_update()
                 sdk.audio.post('siren', 'c_emitter', {32767, 1})
@@ -2369,7 +2402,7 @@ mod world_audio_tests {
         assert!(matches!(&cmds[10], Command::AudioSubscribe { tags: None }), "nil stops");
         assert!(cmds.iter().all(Command::validate));
         assert!(matches!(&cmds[4], Command::AudioSetGlobal { value: None, .. }), "nil restores");
-        let _ = std::fs::remove_dir_all(root);
+        let _ = skate_fs::remove_dir_all(root);
     }
 
     /// Audio tuning extension 1: `audio_set_tuning` crosses the serde boundary (valid, invalid,
@@ -2399,8 +2432,8 @@ mod world_audio_tests {
         }
         assert!(serde_json::from_value::<Command>(json!({"kind":"audio_set_tuning","domain":"world","patch":{},"owner":"x"})).is_err());
         let root = std::env::temp_dir().join(format!("skate-audio-tuning-lua-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             local M = {}
             function M.on_update()
                 assert(sdk.capabilities.audio_tuning == 1, 'capability')
@@ -2420,7 +2453,7 @@ mod world_audio_tests {
         assert!(cmds.iter().all(Command::validate));
         assert!(matches!(&cmds[1], Command::AudioSetTuning { patch: None, .. }), "nil restores");
         assert!(matches!(&cmds[2], Command::Request { command, .. } if matches!(&**command, Command::EngineInspect { system } if system == "audio_tuning:world/traffic_engine/c04_taxi01")));
-        let _ = std::fs::remove_dir_all(root);
+        let _ = skate_fs::remove_dir_all(root);
     }
 
     /// Audio extension 4 (doc 16 L2, L5): `audio_set_mixmap_input` and `audio_seed` cross the serde
@@ -2451,8 +2484,8 @@ mod world_audio_tests {
         assert!(serde_json::from_value::<Command>(json!({"kind":"audio_seed","seed":1,"owner":"x"})).is_err());
         assert!(serde_json::from_value::<Command>(json!({"kind":"audio_seed","seed":-1})).is_err());
         let root = std::env::temp_dir().join(format!("skate-audio-l2l5-lua-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             local M = {}
             function M.on_update()
                 assert(sdk.capabilities.audio == 4, 'capability')
@@ -2477,7 +2510,7 @@ mod world_audio_tests {
         assert!(matches!(&cmds[2], Command::AudioSetMixmapInput { value: None, .. }), "nil releases");
         assert!(matches!(&cmds[3], Command::AudioSeed { seed: Some(42) }));
         assert!(matches!(&cmds[4], Command::AudioSeed { seed: None }));
-        let _ = std::fs::remove_dir_all(root);
+        let _ = skate_fs::remove_dir_all(root);
     }
 
     /// Audio events extension 2: `audio_rule` crosses the serde boundary (valid, invalid, unknown
@@ -2503,8 +2536,8 @@ mod world_audio_tests {
         }
         assert!(serde_json::from_value::<Command>(json!({"kind":"audio_rule","key":"x","rule":{"match":{"tag":"pop"},"action":"mute"},"extra":1})).is_err());
         let root = std::env::temp_dir().join(format!("skate-audio-rule-lua-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             local M = {}
             function M.on_update()
                 assert(sdk.capabilities.audio_events == 3 and sdk.capabilities.audio_content == 3, 'capabilities')
@@ -2532,7 +2565,7 @@ mod world_audio_tests {
         assert!(matches!(&cmds[3], Command::AudioRule { rule: Some(r), .. } if r.play.as_ref().is_some_and(|p| p.at == crate::audio_rules::RuleAt::World && p.position == Some([1.0, 2.0, 3.0]))));
         assert!(matches!(&cmds[4], Command::AudioPlay { options, .. } if options.native.is_none() && options.wants_native()));
         assert!(matches!(&cmds[5], Command::AudioPlay { options, .. } if options.native == Some(false)));
-        let _ = std::fs::remove_dir_all(root);
+        let _ = skate_fs::remove_dir_all(root);
     }
 
     #[test]
@@ -2596,8 +2629,8 @@ mod empty_table_lists {
     #[test]
     fn every_list_field_takes_an_empty_table_and_a_list() {
         let root = std::env::temp_dir().join(format!("skate-empty-lists-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("main.lua"), r#"
+        skate_fs::create_dir_all(&root).unwrap();
+        skate_fs::write(root.join("main.lua"), r#"
             local M = {}
             local req = sdk.commands.request
             local tri = {{0,0,0},{1,0,0},{0,1,0}}
@@ -2691,7 +2724,7 @@ mod empty_table_lists {
             let e = run(case).expect_err("named keys");
             assert!(e.contains("expected a list"), "{e}");
         }
-        let _ = std::fs::remove_dir_all(&root);
+        let _ = skate_fs::remove_dir_all(&root);
     }
 
     /// Fields that are maps or free values keep reading `{}` as a map / an object.

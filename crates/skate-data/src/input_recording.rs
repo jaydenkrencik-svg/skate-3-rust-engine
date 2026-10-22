@@ -34,7 +34,7 @@ pub struct Recording {
 }
 impl Recording {
     pub fn load(path: &Path) -> Result<Self, String> {
-        let file = std::fs::File::open(path)
+        let file = skate_fs::File::open(path)
             .map_err(|e| format!("Input recording {}: {e}", path.display()))?;
         Self::read(std::io::BufReader::new(file))
     }

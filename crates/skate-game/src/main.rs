@@ -1,5 +1,18 @@
+// The browser has no stderr: route the game's diagnostics (and the startup
+// errors `main` prints before returning) to the console. Declared before the
+// modules so it shadows `std::eprintln!` throughout the crate.
+#[cfg(target_arch = "wasm32")]
+macro_rules! eprintln {
+    () => {};
+    ($($arg:tt)*) => { $crate::web::stderr(&format!($($arg)*)) };
+}
+
+#[cfg(target_arch = "wasm32")]
+mod web;
 mod frame_timing;
 mod animation;
+// Native only: the browser build never starts it (see the wasm `main`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod crash_report;
 mod crash_context;
 mod multiplayer;
@@ -18,6 +31,8 @@ mod assets;
 mod camera;
 mod config;
 mod setup;
+// Native only: the browser build never starts it (see the wasm `main`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod updater;
 mod map_library;
 mod map_render;
@@ -32,6 +47,8 @@ mod physics;
 mod skater_animation;
 mod verification;
 mod performance;
+// Native only: the browser build never starts it (see the wasm `main`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod profiling;
 mod graphics_menu;
 mod retail_menus;
@@ -61,6 +78,7 @@ pub(crate) mod world_audio;
 pub(crate) mod ui_audio;
 mod trigger_volumes;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> bevy::app::AppExit {
     match updater::recover() {
         Ok(true) => return bevy::app::AppExit::Success,
@@ -78,6 +96,26 @@ fn main() -> bevy::app::AppExit {
         Ok(guard) => guard,
         Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::error(); }
     };
+    run()
+}
+
+/// The browser build starts from `web::skate_start`, which the loader calls
+/// once the data index is installed and the player has clicked (browsers only
+/// allow audio after a gesture). Instantiating the module only arms panics.
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    console_error_panic_hook::set_once();
+}
+
+/// The command line: process arguments natively, the page URL in the browser.
+pub(crate) fn args() -> Vec<std::ffi::OsString> {
+    #[cfg(not(target_arch = "wasm32"))]
+    return std::env::args_os().skip(1).collect();
+    #[cfg(target_arch = "wasm32")]
+    return web::args();
+}
+
+fn run() -> bevy::app::AppExit {
     let _startup = bevy::log::info_span!("startup").entered();
     eprintln!("REPORT_META stage=configuration_and_installation");
     let config = match bevy::log::info_span!("load_configuration_and_map").in_scope(config::Config::from_env) {
@@ -88,7 +126,7 @@ fn main() -> bevy::app::AppExit {
         }
     };
     profiling::map_metadata(&config);
-    eprintln!("REPORT_META startup=map_fingerprint:{:016x} difficulty:{} multiplayer_requested:{} custom_appearance:{} renderer:Vulkan", config.map_fingerprint, config.difficulty.key(), config.multiplayer.host.is_some() || config.multiplayer.direct.is_some(), config.multiplayer.appearance.is_some());
+    eprintln!("REPORT_META startup=map_fingerprint:{:016x} difficulty:{} multiplayer_requested:{} custom_appearance:{} renderer:{}", config.map_fingerprint, config.difficulty.key(), config.multiplayer.host.is_some() || config.multiplayer.direct.is_some(), config.multiplayer.appearance.is_some(), if cfg!(target_arch = "wasm32") { "WebGPU" } else { "Vulkan" });
     eprintln!("REPORT_META stage=gameplay_configuration");
     if let Err(error) = skate_data::input_config::StockGameplayConfig::load(&config.asset_root) {
         eprintln!("{error}");
@@ -182,6 +220,7 @@ mod action_host_tests;
 
 /// Writes the retail water/ocean animation table for setup (see
 /// skate_data::ocean_pca). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_ocean_pca() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-ocean-pca" {
@@ -191,10 +230,10 @@ fn extract_ocean_pca() -> Option<i32> {
         eprintln!("Usage: skate3rust --extract-ocean-pca <default.xex> <ocean-pca.json>");
         return Some(2);
     };
-    let result = std::fs::read(&xex)
+    let result = skate_fs::read(&xex)
         .map_err(|e| format!("{}: {e}", std::path::Path::new(&xex).display()))
         .and_then(|bytes| skate_data::ocean_pca::json_from_xex(&bytes))
-        .and_then(|json| std::fs::write(&out, json).map_err(|e| format!("{}: {e}", std::path::Path::new(&out).display())));
+        .and_then(|json| skate_fs::write(&out, json).map_err(|e| format!("{}: {e}", std::path::Path::new(&out).display())));
     match result {
         Ok(()) => {
             println!("OCEAN_PCA_READY");
@@ -209,6 +248,7 @@ fn extract_ocean_pca() -> Option<i32> {
 
 /// Writes the retail front-end menu tables for setup (see
 /// skate_data::menu_tables). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_menu_tables() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-menu-tables" {
@@ -218,10 +258,10 @@ fn extract_menu_tables() -> Option<i32> {
         eprintln!("Usage: skate3rust --extract-menu-tables <default.xex> <menu-tables.json>");
         return Some(2);
     };
-    let result = std::fs::read(&xex)
+    let result = skate_fs::read(&xex)
         .map_err(|e| format!("{}: {e}", std::path::Path::new(&xex).display()))
         .and_then(|bytes| skate_data::menu_tables::json_from_xex(&bytes))
-        .and_then(|json| std::fs::write(&out, json).map_err(|e| format!("{}: {e}", std::path::Path::new(&out).display())));
+        .and_then(|json| skate_fs::write(&out, json).map_err(|e| format!("{}: {e}", std::path::Path::new(&out).display())));
     match result {
         Ok(()) => {
             println!("MENU_TABLES_READY");

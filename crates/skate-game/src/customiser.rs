@@ -669,7 +669,7 @@ fn setup(mut commands: Commands, config: Res<crate::config::Config>, parts: Res<
         .unwrap_or(json!({"selections":{},"morphs":{}}));
     let mut enabled = false;
     let status = String::new();
-    if let Ok(b) = std::fs::read(&settings) {
+    if let Ok(b) = skate_fs::read(&settings) {
         if let Ok(saved) = serde_json::from_slice::<Value>(&b) {
             if let Ok(p) = parts.resolve(&saved) {
                 draft = p;
@@ -677,7 +677,7 @@ fn setup(mut commands: Commands, config: Res<crate::config::Config>, parts: Res<
             }
         }
     }
-    let extras = std::fs::read(
+    let extras = skate_fs::read(
         crate::customiser_parts::asset_directory(&config.asset_root).join("extra-menu.json"),
     )
     .ok()
@@ -905,15 +905,15 @@ fn interact(
             state.selected = state.visible().iter().position(|v| *v == i).unwrap_or(0);
         } else {
             let save = (|| -> Result<(), String> {
-                std::fs::create_dir_all(state.settings.parent().unwrap())
+                skate_fs::create_dir_all(state.settings.parent().unwrap())
                     .map_err(|e| e.to_string())?;
                 let tmp = state.settings.with_extension("pending.json");
-                std::fs::write(
+                skate_fs::write(
                     &tmp,
                     serde_json::to_vec_pretty(&state.draft).map_err(|e| e.to_string())?,
                 )
                 .map_err(|e| e.to_string())?;
-                std::fs::rename(tmp, &state.settings).map_err(|e| e.to_string())
+                skate_fs::rename(tmp, &state.settings).map_err(|e| e.to_string())
             })();
             match save {
                 Ok(()) => {
@@ -1397,9 +1397,9 @@ mod tests {
         let Ok(path) = std::env::var("SKATE_CAC_TEST_LIBRARY") else {
             return;
         };
-        let lib: Library = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let lib: Library = serde_json::from_slice(&skate_fs::read(&path).unwrap()).unwrap();
         let extras: Vec<Entry> = serde_json::from_slice(
-            &std::fs::read(std::path::Path::new(&path).with_file_name("extra-menu.json")).unwrap(),
+            &skate_fs::read(std::path::Path::new(&path).with_file_name("extra-menu.json")).unwrap(),
         )
         .unwrap();
         let parts = Parts::for_test(lib);

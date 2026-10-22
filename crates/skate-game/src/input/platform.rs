@@ -3,6 +3,9 @@
 //! axes/trigger bytes reach the TU3 converter without Bevy/gilrs deadzones or
 //! normalized-axis reconstruction. `SKATE3_INPUT=xinput` selects the original
 //! Windows XInput transport, which is also the fallback if SDL cannot start.
+//! The browser build has neither: it reads the Gamepad API (`browser` below).
+// The XInput and SDL transports are native-only; the browser build compiles their shared helpers unused.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 use super::controller_kind::{ControllerKind, XinputCaps};
 use skate_core::input::xbox::XboxState;
 use std::sync::{Arc, OnceLock};
@@ -60,7 +63,7 @@ pub(crate) enum DeviceError {
     State(u32),
     Capabilities(u32),
     /// No device backend could be started.
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_arch = "wasm32")))]
     Unavailable,
 }
 
@@ -76,7 +79,7 @@ pub(crate) struct XinputIdentity {
 /// Refresh periodically as well as after errors, so hot swaps cannot leave a
 /// subtype cached indefinitely even if Windows never exposes a disconnect.
 pub(crate) struct CapabilityCache<T = XinputIdentity> {
-    value: Option<(T, std::time::Instant)>,
+    value: Option<(T, web_time::Instant)>,
 }
 impl<T> Default for CapabilityCache<T> {
     fn default() -> Self {
@@ -90,7 +93,7 @@ impl<T: Clone> CapabilityCache<T> {
     #[cfg_attr(not(windows), allow(dead_code))]
     fn get(
         &mut self,
-        now: std::time::Instant,
+        now: web_time::Instant,
         read: impl FnOnce() -> Result<T, DeviceError>,
     ) -> Result<T, DeviceError> {
         if let Some((subtype, expires)) = &self.value {
@@ -228,7 +231,7 @@ mod windows {
         if result != 0 {
             return Err(DeviceError::State(result));
         }
-        let identity = cache.get(std::time::Instant::now(), || {
+        let identity = cache.get(web_time::Instant::now(), || {
             let mut capabilities = MaybeUninit::<Capabilities>::uninit();
             // SAFETY: writable storage with the SDK ABI; read only on success.
             let result = unsafe { XInputGetCapabilities(index, 1, capabilities.as_mut_ptr()) };
@@ -292,6 +295,7 @@ pub(crate) fn xinput_identity(index: u32) -> Option<ControllerKind> {
     windows::identity(index)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 mod sdl {
     use super::*;
     use crate::input::controller_kind;
@@ -473,12 +477,175 @@ mod sdl {
     }
 }
 
+/// The Gamepad API, polled on the calling thread: browsers expose pads only
+/// to the page's main thread, and `getGamepads` is a cheap snapshot. Pads
+/// appear after their first button press, as the browser requires. Without a
+/// pad in slot 0 the keyboard drives it (web/README-web.md lists the keys).
+#[cfg(target_arch = "wasm32")]
+mod browser {
+    use super::*;
+    use crate::input::controller_kind;
+    use std::sync::Mutex;
+    use wasm_bindgen::JsCast;
+
+    /// XINPUT_DEVSUBTYPE_GAMEPAD, as SDL reports for every mapped pad.
+    const SUBTYPE_GAMEPAD: u8 = 1;
+    /// Standard-mapping button index → XInput bit. 6/7 are the triggers.
+    const BUTTONS: [(u32, u16); 14] = [
+        (12, 0x0001), (13, 0x0002), (14, 0x0004), (15, 0x0008),
+        (9, 0x0010), (8, 0x0020), (10, 0x0040), (11, 0x0080),
+        (4, 0x0100), (5, 0x0200),
+        (0, 0x1000), (1, 0x2000), (2, 0x4000), (3, 0x8000),
+    ];
+
+    struct Slot {
+        id: String,
+        number: u32,
+        state: XboxState,
+        kind: Arc<ControllerKind>,
+    }
+
+    static SLOTS: Mutex<[Option<Slot>; 4]> = Mutex::new([None, None, None, None]);
+
+    fn axis(value: f64) -> i16 {
+        (value.clamp(-1.0, 1.0) * 32767.0).round() as i16
+    }
+
+    fn read(pad: &web_sys::Gamepad) -> XboxState {
+        let buttons = pad.buttons();
+        let button = |index: u32| buttons.get(index).dyn_into::<web_sys::GamepadButton>().ok();
+        let mut bits = 0;
+        for (index, bit) in BUTTONS {
+            if button(index).is_some_and(|b| b.pressed()) {
+                bits |= bit;
+            }
+        }
+        let trigger = |index| button(index).map_or(0, |b| (b.value().clamp(0.0, 1.0) * 255.0).round() as u8);
+        let axes = pad.axes();
+        let value = |index| axes.get(index).as_f64().unwrap_or(0.0);
+        XboxState {
+            buttons: bits,
+            triggers: [trigger(6), trigger(7)],
+            // Gamepad API Y is positive-down; XInput's is positive-up.
+            left: [axis(value(0)), axis(-value(1))],
+            right: [axis(value(2)), axis(-value(3))],
+        }
+    }
+
+    /// Keyboard stand-in for a pad in slot 0 while no gamepad occupies it, so
+    /// the game is playable without one. Keys by `KeyboardEvent.code`.
+    mod keyboard {
+        use super::*;
+        use std::{cell::RefCell, collections::HashSet};
+        use wasm_bindgen::closure::Closure;
+
+        pub(super) const ID: &str = "Keyboard";
+        const BUTTONS: [(&str, u16); 14] = [
+            ("KeyT", 0x0001), ("KeyG", 0x0002), ("KeyF", 0x0004), ("KeyH", 0x0008),
+            ("Enter", 0x0010), ("Backspace", 0x0020), ("KeyC", 0x0040), ("KeyV", 0x0080),
+            ("KeyU", 0x0100), ("KeyO", 0x0200),
+            ("Space", 0x1000), ("KeyQ", 0x2000), ("ShiftLeft", 0x4000), ("KeyE", 0x8000),
+        ];
+        // Left stick WASD, right stick (flick-it) arrows, triggers J/K.
+        const LEFT: [&str; 4] = ["KeyA", "KeyD", "KeyS", "KeyW"];
+        const RIGHT: [&str; 4] = ["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp"];
+
+        thread_local! {
+            static HELD: RefCell<Option<HashSet<String>>> = const { RefCell::new(None) };
+        }
+
+        fn listen() {
+            let Some(window) = web_sys::window() else { return };
+            let down = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|event: web_sys::KeyboardEvent| {
+                HELD.with(|held| held.borrow_mut().get_or_insert_default().insert(event.code()));
+            });
+            let up = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|event: web_sys::KeyboardEvent| {
+                HELD.with(|held| held.borrow_mut().get_or_insert_default().remove(&event.code()));
+            });
+            // A lost focus never delivers keyup: release everything.
+            let blur = Closure::<dyn FnMut()>::new(|| HELD.with(|held| held.borrow_mut().get_or_insert_default().clear()));
+            let _ = window.add_event_listener_with_callback("keydown", down.as_ref().unchecked_ref());
+            let _ = window.add_event_listener_with_callback("keyup", up.as_ref().unchecked_ref());
+            let _ = window.add_event_listener_with_callback("blur", blur.as_ref().unchecked_ref());
+            // The listeners live as long as the page.
+            down.forget();
+            up.forget();
+            blur.forget();
+        }
+
+        pub(super) fn read() -> XboxState {
+            HELD.with(|held| {
+                let mut held = held.borrow_mut();
+                if held.is_none() {
+                    *held = Some(HashSet::new());
+                    drop(held);
+                    listen();
+                    return XboxState::default();
+                }
+                let keys = held.as_ref().expect("initialised above");
+                let on = |code: &str| keys.contains(code);
+                let axis = |negative: &str, positive: &str| match (on(negative), on(positive)) {
+                    (true, false) => -32767,
+                    (false, true) => 32767,
+                    _ => 0,
+                };
+                let stick = |codes: [&str; 4]| [axis(codes[0], codes[1]), axis(codes[2], codes[3])];
+                XboxState {
+                    buttons: BUTTONS.iter().filter(|(code, _)| on(code)).fold(0, |acc, (_, bit)| acc | bit),
+                    triggers: [if on("KeyJ") { 255 } else { 0 }, if on("KeyK") { 255 } else { 0 }],
+                    left: stick(LEFT),
+                    right: stick(RIGHT),
+                }
+            })
+        }
+    }
+
+    pub(super) fn poll(index: usize) -> Result<DevicePacket, DeviceError> {
+        let pad = web_sys::window()
+            .and_then(|w| w.navigator().get_gamepads().ok())
+            .map(|pads| pads.get(index as u32))
+            .and_then(|pad| pad.dyn_into::<web_sys::Gamepad>().ok())
+            .filter(|pad| pad.connected());
+        let mut slots = SLOTS.lock().unwrap_or_else(|e| e.into_inner());
+        let (id, state) = match &pad {
+            Some(pad) => (pad.id(), None),
+            None if index == 0 => (keyboard::ID.to_string(), Some(keyboard::read())),
+            None => {
+                if slots[index].take().is_some() {
+                    bevy::log::info!("Controller {index}: browser gamepad removed");
+                }
+                return Err(DeviceError::Disconnected);
+            }
+        };
+        if slots[index].as_ref().is_none_or(|slot| slot.id != id) {
+            let standard = pad.as_ref().is_none_or(|pad| pad.mapping() == web_sys::GamepadMappingType::Standard);
+            let kind = controller_kind::from_browser(&id, standard, controller_kind::user_models());
+            bevy::log::info!("Controller {index}: browser {}", kind.summary());
+            if !standard {
+                bevy::log::warn!("Controller {index}: the browser has no standard mapping for {id:?}; buttons may be wrong");
+            }
+            slots[index] = Some(Slot { id, number: 0, state: XboxState::default(), kind: Arc::new(kind) });
+        }
+        let slot = slots[index].as_mut().expect("slot opened above");
+        let state = state.unwrap_or_else(|| read(pad.as_ref().expect("a pad unless keyboard")));
+        // Mirrors XInput dwPacketNumber: advances only when state changes.
+        if state != slot.state {
+            slot.number = slot.number.wrapping_add(1);
+            slot.state = state;
+        }
+        Ok(DevicePacket { number: slot.number, state, subtype: SUBTYPE_GAMEPAD, kind: Some(slot.kind.clone()) })
+    }
+}
+
 enum Backend {
+    #[cfg(not(target_arch = "wasm32"))]
     Sdl(&'static sdl::Shared),
     #[cfg(windows)]
     XInput,
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_arch = "wasm32")))]
     Unavailable,
+    #[cfg(target_arch = "wasm32")]
+    Browser,
 }
 
 fn backend() -> &'static Backend {
@@ -489,6 +656,9 @@ fn backend() -> &'static Backend {
             bevy::log::info!("Controller input: XInput (SKATE3_INPUT=xinput)");
             return Backend::XInput;
         }
+        #[cfg(target_arch = "wasm32")]
+        return Backend::Browser;
+        #[cfg(not(target_arch = "wasm32"))]
         match sdl::start() {
             Ok(shared) => Backend::Sdl(shared),
             #[cfg(windows)]
@@ -511,14 +681,20 @@ pub(crate) fn poll_cached(
 ) -> Result<DevicePacket, DeviceError> {
     assert!(index < 4);
     match backend() {
+        #[cfg(not(target_arch = "wasm32"))]
         Backend::Sdl(shared) => {
             let _ = cache;
             sdl::poll(shared, index)
         }
         #[cfg(windows)]
         Backend::XInput => windows::poll(index as u32, cache),
-        #[cfg(not(windows))]
+        #[cfg(all(not(windows), not(target_arch = "wasm32")))]
         Backend::Unavailable => Err(DeviceError::Unavailable),
+        #[cfg(target_arch = "wasm32")]
+        Backend::Browser => {
+            let _ = cache;
+            browser::poll(index)
+        }
     }
 }
 
@@ -565,7 +741,7 @@ mod cache_tests {
     use super::*;
     #[test]
     fn capability_cache_refreshes_and_never_caches_errors() {
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let mut cache = CapabilityCache::<u8>::default();
         assert_eq!(cache.get(start, || Ok(1)), Ok(1));
         assert_eq!(

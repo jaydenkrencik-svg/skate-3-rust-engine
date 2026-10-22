@@ -78,7 +78,7 @@ impl Collections {
 
     pub fn load(asset_root: &Path) -> Result<Self, String> {
         let path = asset_root.join("private/stock/skater-collections.json");
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = skate_fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let data: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
         if data.version != 1 {
             return Err(format!(

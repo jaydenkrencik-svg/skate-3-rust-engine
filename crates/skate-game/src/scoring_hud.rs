@@ -137,7 +137,7 @@ fn setup(
         .unwrap_or_else(|| config.asset_root.join("private/hud"));
     let result = (|| -> Result<Hud, String> {
         let source: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root.join("runtime/trickdisplay.json"))
+            &skate_fs::read(root.join("runtime/trickdisplay.json"))
                 .map_err(|e| format!("{}: {e}", root.display()))?,
         )
         .map_err(|e| e.to_string())?;
@@ -156,7 +156,7 @@ fn setup(
         }
         let mut textures = BTreeMap::new();
         for (path, size) in files {
-            let bytes = std::fs::read(root.join(&path)).map_err(|e| format!("HUD {path}: {e}"))?;
+            let bytes = skate_fs::read(root.join(&path)).map_err(|e| format!("HUD {path}: {e}"))?;
             if bytes.len() != size[0] as usize * size[1] as usize * 4 {
                 return Err(format!("Invalid HUD texture size {path}"));
             }

@@ -435,7 +435,7 @@ pub(crate) fn advance(
     {
         return;
     }
-    let timer = performance.as_ref().map(|_| std::time::Instant::now());
+    let timer = performance.as_ref().map(|_| web_time::Instant::now());
     let mut actions = input.0.actions();
     let input_available = input.0.controller_available();
     #[cfg(debug_assertions)]

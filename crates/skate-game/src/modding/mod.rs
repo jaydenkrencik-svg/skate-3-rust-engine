@@ -25,7 +25,7 @@ pub(crate) mod player_physics;
 pub(crate) use menu::ModMenu;
 
 use bevy::{
-    asset::io::{AssetSourceBuilder, file::FileAssetReader},
+    asset::io::AssetSourceBuilder,
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ pub(crate) struct Mods {
     canvases: BTreeMap<(String, String), canvas::Canvas>,
     attach: Option<AttachState>,
     detach_error: Option<String>,
-    detach_pending: Option<(Transform,std::time::Instant)>,
+    detach_pending: Option<(Transform,web_time::Instant)>,
     camera: CameraOverride,
     suspended_by: BTreeSet<String>,
     hidden_players: BTreeMap<Entity, Visibility>,
@@ -145,7 +145,7 @@ pub(crate) struct ModdingPlugin;
 impl Plugin for ModdingPlugin {
     fn build(&self, app: &mut App) {
         let root = package_root();
-        if let Err(e) = std::fs::create_dir_all(&root) {
+        if let Err(e) = skate_fs::create_dir_all(&root) {
             warn!("Cannot create mods folder {}: {e}", root.display());
         }
         info!("Mod packages folder: {}", root.display());
@@ -210,7 +210,7 @@ pub(crate) fn register_source(app: &mut App) {
     let root = package_root();
     app.register_asset_source(
         "mods",
-        AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(root.clone()))),
+        AssetSourceBuilder::new(move || crate::assets::directory_reader(root.clone())),
     );
 }
 
@@ -1391,13 +1391,13 @@ fn apply_one(
         }
         Command::MenuMovie { name, path } => {
             let package = mods.manager.packages.get(id).ok_or("missing package")?;
-            let root = package.root.canonicalize().map_err(|e| e.to_string())?;
-            let full = root.join(&path).canonicalize().map_err(|e| e.to_string())?;
+            let root = skate_fs::canonicalize(&package.root).map_err(|e| e.to_string())?;
+            let full = skate_fs::canonicalize(&root.join(&path)).map_err(|e| e.to_string())?;
             if !full.starts_with(&root) { return Err("menu movie escapes its package".into()); }
-            if std::fs::metadata(&full).map_err(|e| e.to_string())?.len() > crate::retail_menu_movies::MAX_MOD_MOVIE_BYTES {
+            if skate_fs::metadata(&full).map_err(|e| e.to_string())?.len() > crate::retail_menu_movies::MAX_MOD_MOVIE_BYTES {
                 return Err("menu movie file is too large".into());
             }
-            let json = serde_json::from_slice(&std::fs::read(&full).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            let json = serde_json::from_slice(&skate_fs::read(&full).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             let mut movies = world.get_resource_mut::<crate::retail_menu_movies::RetailMenuMovies>().ok_or("menu movies are not ready")?;
             movies.set_mod_movie(id, &name, json)?;
         }
@@ -1436,8 +1436,8 @@ fn resolve_body_desc(mods: &Mods, owner: &str, mut body: BodyDesc) -> Result<Bod
             if path.is_empty() || !skate_mods::scene::valid_asset(path) {
                 return Err("invalid model GLB path".into());
             }
-            let root = package.root.canonicalize().map_err(|e| e.to_string())?;
-            let full = root.join(path).canonicalize().map_err(|e| e.to_string())?;
+            let root = skate_fs::canonicalize(&package.root).map_err(|e| e.to_string())?;
+            let full = skate_fs::canonicalize(&root.join(path)).map_err(|e| e.to_string())?;
             if !full.starts_with(&root) { return Err("model GLB escapes its package".into()); }
             body.shape = skate_mods::model_shape_file(&full, object, options)?;
         }
@@ -1461,8 +1461,8 @@ fn resolve_convex_points(mods: &Mods, owner: &str, shape: Shape) -> Result<Vec<[
                 .get(owner)
                 .ok_or("missing package")?;
             if !skate_mods::scene::valid_asset(&path) || path.is_empty() { return Err("invalid collider GLB path".into()); }
-            let root=package.root.canonicalize().map_err(|e|e.to_string())?;
-            let full=root.join(&path).canonicalize().map_err(|e|e.to_string())?;
+            let root=skate_fs::canonicalize(&package.root).map_err(|e|e.to_string())?;
+            let full=skate_fs::canonicalize(&root.join(&path)).map_err(|e|e.to_string())?;
             if !full.starts_with(&root) { return Err("collider GLB escapes its package".into()); }
             glb::convex_points(&full, &object)
         }

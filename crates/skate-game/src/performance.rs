@@ -11,8 +11,9 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 /// Seconds discarded before sampling, so shader compilation, asset streaming and
 /// the map publish settle do not pollute the window.
@@ -443,7 +444,7 @@ fn write_report(path: &std::path::Path, report: &Report) -> std::io::Result<()> 
             "triangles": f.triangles,
         })).collect::<Vec<_>>(),
     });
-    std::fs::write(path, serde_json::to_vec_pretty(&json)?)
+    skate_fs::write(path, serde_json::to_vec_pretty(&json)?)
 }
 
 #[cfg(test)]

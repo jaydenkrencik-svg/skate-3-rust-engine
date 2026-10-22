@@ -42,7 +42,7 @@ fn rows(session: &str) -> Vec<Row> {
         panic!("missing private data: SKATE_WORLD_ONESHOTS (the world_oneshots.py --json exports)");
     };
     let path = std::path::Path::new(&dir).join(format!("oneshots_{session}.json"));
-    let Ok(text) = std::fs::read_to_string(&path) else { panic!("missing private data: {}", path.display()) };
+    let Ok(text) = skate_fs::read_to_string(&path) else { panic!("missing private data: {}", path.display()) };
     serde_json::from_str(&text).unwrap()
 }
 

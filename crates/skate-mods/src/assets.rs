@@ -28,15 +28,15 @@ pub fn list_objects(root: &Path, relative: &str) -> Result<ObjectLists, String> 
     {
         return Err("Use a relative path without traversal".into());
     }
-    let root = root.canonicalize().map_err(|e| e.to_string())?;
-    let path = root.join(rel).canonicalize().map_err(|e| e.to_string())?;
+    let root = skate_fs::canonicalize(&root).map_err(|e| e.to_string())?;
+    let path = skate_fs::canonicalize(&root.join(rel)).map_err(|e| e.to_string())?;
     if !path.starts_with(&root) {
         return Err("Asset escapes mod root".into());
     }
-    if !path.is_file() {
+    if !skate_fs::is_file(&path) {
         return Err(format!("GLB not found: {relative}"));
     }
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let meta = skate_fs::metadata(&path).map_err(|e| e.to_string())?;
     if meta.len() > 64 * 1024 * 1024 {
         return Err("GLB exceeds 64 MiB".into());
     }
@@ -65,10 +65,10 @@ pub fn convex_points_file(path: &Path, object: &str) -> Result<Vec<[f32; 3]>, St
     if object.is_empty() || object.len() > 120 || object.contains("..") {
         return Err("invalid GLB object name".into());
     }
-    if !path.is_file() {
+    if !skate_fs::is_file(&path) {
         return Err(format!("GLB not found: {}", path.display()));
     }
-    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let metadata = skate_fs::metadata(path).map_err(|e| e.to_string())?;
     if metadata.len() > 64 * 1024 * 1024 {
         return Err("GLB exceeds 64 MiB".into());
     }

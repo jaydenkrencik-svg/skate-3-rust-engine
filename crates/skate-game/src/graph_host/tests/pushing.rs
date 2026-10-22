@@ -326,8 +326,8 @@ fn collections() -> Collections {
         r#"{{"version":1,"collections":[{{"class":"anim_motion","key":"pushing","parent":"","fields":{{{}}},"source":"test","sha256":"test"}}]}}"#,
         fields.join(",")
     );
-    let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let unique = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -335,14 +335,14 @@ fn collections() -> Collections {
         std::process::id()
     ));
     let stock = root.join("private/stock");
-    std::fs::create_dir_all(&stock).unwrap();
+    skate_fs::create_dir_all(&stock).unwrap();
     let file = stock.join("skater-collections.json");
-    std::fs::write(&file, json).unwrap();
+    skate_fs::write(&file, json).unwrap();
     let result = Collections::load(&root);
-    std::fs::remove_file(file).unwrap();
-    std::fs::remove_dir(stock).unwrap();
-    std::fs::remove_dir(root.join("private")).unwrap();
-    std::fs::remove_dir(root).unwrap();
+    skate_fs::remove_file(file).unwrap();
+    skate_fs::remove_dir(stock).unwrap();
+    skate_fs::remove_dir(root.join("private")).unwrap();
+    skate_fs::remove_dir(root).unwrap();
     result.unwrap()
 }
 #[test]

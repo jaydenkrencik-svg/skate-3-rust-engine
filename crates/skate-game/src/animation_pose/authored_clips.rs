@@ -21,7 +21,7 @@ struct AuthoredClip {
 impl Replacements {
     pub fn load(root: &Path, frames: &AnimationFrames) -> Result<Self, String> {
         let path = root.join("private/custom/crouch-treflip.json");
-        let text = match std::fs::read_to_string(&path) {
+        let text = match skate_fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -183,7 +183,7 @@ mod tests {
         let banks = AnimationBanks::load(&root).unwrap();
         let frames = AnimationFrames::from_banks(&banks).unwrap();
         let text =
-            std::fs::read_to_string(root.join("private/custom/crouch-treflip.json")).unwrap();
+            skate_fs::read_to_string(root.join("private/custom/crouch-treflip.json")).unwrap();
         (frames, text)
     }
     #[test]

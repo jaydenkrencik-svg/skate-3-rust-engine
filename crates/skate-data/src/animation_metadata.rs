@@ -2,7 +2,8 @@
 //! Clock/attribute evaluation belongs to core/game; this loader preserves bits
 //! and record order and rejects malformed or ambiguous source data.
 use serde::Deserialize;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, path::Path};
+use skate_fs as fs;
 mod native;
 mod blend_space;
 pub use blend_space::{BlendSpaceMetadata, BlendSimplexMetadata};

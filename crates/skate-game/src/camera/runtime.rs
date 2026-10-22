@@ -58,7 +58,7 @@ impl CameraRuntime {
             "private/stock/data/script/camera/Default_cameragraph.stategraph"), slow_motion)?;
         let samples = |name: &str| -> Result<ShakeSamples, String> {
             let path = root.join("private/stock/data/camera").join(name);
-            shake_data::parse(&std::fs::read_to_string(&path)
+            shake_data::parse(&skate_fs::read_to_string(&path)
                 .map_err(|e| format!("{}: {e}", path.display()))?)
         };
         Ok(Self { manager: CameraMan::new(), subject: SubjectPublisher::new(), graph,

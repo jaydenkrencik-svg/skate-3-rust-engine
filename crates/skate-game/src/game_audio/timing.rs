@@ -6,7 +6,7 @@
 //! scope. For finding stutter in real play (`tools/audio-bench/`); measuring only, no behaviour.
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use web_time::Instant;
 
 use bevy::prelude::*;
 

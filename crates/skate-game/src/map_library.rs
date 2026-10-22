@@ -11,13 +11,13 @@ pub(crate) fn discover(assets: &Path) -> Vec<Entry> {
     let mut maps = Vec::new();
     let root = assets.parent().unwrap_or(assets).join("maps");
     for directory in [&root, &root.join("private")] {
-        if let Ok(entries) = std::fs::read_dir(directory) {
+        if let Ok(entries) = skate_fs::read_dir(directory) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("skate")) {
+                if skate_fs::is_file(&path) && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("skate")) {
                     maps.push(Entry {
                         label: path.file_stem().unwrap().to_string_lossy().replace('_', " "),
-                        path: Some(path.canonicalize().unwrap_or(path)),
+                        path: Some(skate_fs::canonicalize(&path).unwrap_or(path)),
                     });
                 }
             }
@@ -32,7 +32,7 @@ pub(crate) fn default_map(assets: &Path) -> Result<Option<PathBuf>, String> {
     // Only a completed release installation creates this pointer. Existing
     // development checkouts continue to boot the test world.
     let pointer = assets.parent().unwrap_or(assets).join("settings/default-map.json");
-    let bytes = match std::fs::read(&pointer) {
+    let bytes = match skate_fs::read(&pointer) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(format!("{}: {e}", pointer.display())),
@@ -53,11 +53,11 @@ pub(crate) fn save_default(assets: &Path, map: Option<&Path>) -> Result<(), Stri
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .map_err(|_| "Map is outside this installation; default map unchanged".to_string())).transpose()?;
     let directory = root.join("settings");
-    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    skate_fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let temporary = directory.join("default-map.json.tmp");
-    std::fs::write(&temporary, serde_json::to_vec_pretty(&relative).map_err(|e| e.to_string())?)
+    skate_fs::write(&temporary, serde_json::to_vec_pretty(&relative).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
-    std::fs::rename(temporary, directory.join("default-map.json")).map_err(|e| e.to_string())
+    skate_fs::rename(temporary, directory.join("default-map.json")).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -72,8 +72,8 @@ mod tests {
         assert_eq!(default_map(&assets).unwrap(), Some(map));
         save_default(&assets, None).unwrap();
         assert_eq!(default_map(&assets).unwrap(), None);
-        std::fs::write(root.join("settings/default-map.json"), br#""../outside.skate""#).unwrap();
+        skate_fs::write(root.join("settings/default-map.json"), br#""../outside.skate""#).unwrap();
         assert!(default_map(&assets).is_err());
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 }

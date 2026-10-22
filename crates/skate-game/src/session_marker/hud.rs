@@ -66,7 +66,7 @@ fn load(
     ));
     let folder = overlay_path(&config.asset_root);
     let read = || -> Result<Hud, String> {
-        let bytes = std::fs::read(folder.join("hud.json")).map_err(|e| e.to_string())?;
+        let bytes = skate_fs::read(folder.join("hud.json")).map_err(|e| e.to_string())?;
         let hud: Hud = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
         if hud.version != 1 || hud.canvas != [1280., 720.] {
             return Err("Unsupported original HUD manifest".into());
@@ -90,7 +90,7 @@ fn load(
             error!("Invalid marker texture descriptor");
             return;
         }
-        let Ok(bytes) = std::fs::read(folder.join(path)) else {
+        let Ok(bytes) = skate_fs::read(folder.join(path)) else {
             error!("Missing marker texture {}", t.file);
             return;
         };

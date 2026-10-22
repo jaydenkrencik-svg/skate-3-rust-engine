@@ -3,7 +3,7 @@
 use super::{AttachState,Mods};
 use bevy::prelude::*;
 use skate_mods::scene::DetachOptions;
-use std::time::Instant;
+use web_time::Instant;
 
 pub(crate) fn local_root(mods:&Mods) -> Option<Transform> {
     if let Some(a)=&mods.attach {

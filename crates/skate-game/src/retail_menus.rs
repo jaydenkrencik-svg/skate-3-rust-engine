@@ -124,10 +124,10 @@ pub(crate) fn rule(spec: &RuleSpec) -> Rule {
 /// still add their own categories / items then).
 pub(crate) fn read(root: &Path) -> (MenuData, bool) {
     let path = root.join(TABLES);
-    match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| skate_data::menu_tables::MenuTables::from_json(&t)) {
+    match skate_fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| skate_data::menu_tables::MenuTables::from_json(&t)) {
         Ok(tables) => (tables.to_menu_data(), true),
         Err(error) => {
-            if path.exists() {
+            if skate_fs::exists(&path) {
                 warn!("RETAIL_MENUS: {}: {error}", path.display());
             }
             (MenuData::default(), false)
@@ -608,7 +608,7 @@ mod tests {
         world.resource_mut::<RetailMenus>().act(MenuAction::Step { entry: entry.clone(), direction: Direction::Left });
         sync_engine_values(&mut world);
         assert_eq!(world.resource::<CameraAngleSettings>().selected, CameraAngle::Low);
-        assert!(dir.join("camera.json").exists());
+        assert!(skate_fs::exists(&dir.join("camera.json")));
         // A change from elsewhere (old menu, settings file) shows in the row.
         world.resource_mut::<CameraAngleSettings>().selected = CameraAngle::High;
         sync_engine_values(&mut world);
@@ -619,7 +619,7 @@ mod tests {
         assert_eq!(menus.registry.value(&entry), Some(SettingValue::Int(0)));
         menus.registry.remove_owner(&Owner::Mod("m".into()));
         assert_eq!(menus.registry.value(&entry), Some(SettingValue::Int(1)));
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -664,8 +664,8 @@ mod tests {
             world.resource_mut::<AudioSettings>().set_retail_volume(volume, expected as f32);
             sync_engine_values(&mut world);
         }
-        assert!(dir.join("audio.json").exists(), "saved");
-        let _ = std::fs::remove_dir_all(dir);
+        assert!(skate_fs::exists(&dir.join("audio.json")), "saved");
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// `sdk.menus.set_value` on Engine-bound rows: the mod's value is shown and applied at runtime
@@ -683,14 +683,14 @@ mod tests {
         d.screens[3].push(sfx.into());
         d.screens[4].push(cam.into());
         let dir = std::env::temp_dir().join(format!("skate3rust-menus-setvalue-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
         let mut world = World::new();
         world.insert_resource(RetailMenus::new(d, true));
         let mut audio = AudioSettings::for_test(dir.join("audio.json"));
         let _ = audio.set_retail_volume(RetailVolume::Sfx, 0.7);
         world.insert_resource(audio);
         world.insert_resource(CameraAngleSettings::new(CameraAngle::High, dir.join("camera.json")));
-        let saved_audio = std::fs::read(dir.join("audio.json")).unwrap();
+        let saved_audio = skate_fs::read(dir.join("audio.json")).unwrap();
         sync_engine_values(&mut world);
         let (sfx_entry, cam_entry) = (EntryRef::setting(sfx), EntryRef::setting(cam));
         let set = |world: &mut World, owner: &str, id: &str, value: Value| {
@@ -728,9 +728,9 @@ mod tests {
         clear_owner(&mut world, "b");
         sync_engine_values(&mut world);
         assert_eq!((shown(&world, &sfx_entry), sfx_input(&world)), (Some(SettingValue::Float(f64::from(0.7f32))), RetailVolumes::master_input(0.7)));
-        assert_eq!(std::fs::read(dir.join("audio.json")).unwrap(), saved_audio, "audio.json unchanged");
-        assert!(!dir.join("camera.json").exists(), "camera.json never written");
-        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(skate_fs::read(dir.join("audio.json")).unwrap(), saved_audio, "audio.json unchanged");
+        assert!(!skate_fs::exists(&dir.join("camera.json")), "camera.json never written");
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     #[test]

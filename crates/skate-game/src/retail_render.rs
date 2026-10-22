@@ -592,7 +592,7 @@ pub(crate) struct MaterialTuning {
 impl MaterialTuning {
     pub(crate) fn load(root: &std::path::Path) -> Self {
         let path = root.join("private/render-parameters.json");
-        match std::fs::read(&path)
+        match skate_fs::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<BTreeMap<String, Vec<[f32; 4]>>>(&b).ok())
         {
@@ -1374,7 +1374,7 @@ struct OceanPca {
 }
 
 fn read_pca(root: &std::path::Path) -> Option<OceanPca> {
-    let pca = std::fs::read(root.join("private/ocean-pca.json"))
+    let pca = skate_fs::read(root.join("private/ocean-pca.json"))
         .ok()
         .and_then(|b| serde_json::from_slice::<OceanPca>(&b).ok())?;
     (pca.hz == 30.

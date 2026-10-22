@@ -328,8 +328,8 @@ mod tests {
             position:[0.,0.,1.4],..Default::default()}).unwrap();
         let id=w.spawn(block()).unwrap();w.set_linvel(id,[0.,0.,15.]);
         let before=w.body_definition(id).unwrap();
-        let start=std::time::Instant::now();let mut worst=std::time::Duration::ZERO;
-        for _ in 0..90 {let t=std::time::Instant::now();w.step(1./120.);worst=worst.max(t.elapsed());}
+        let start=web_time::Instant::now();let mut worst=std::time::Duration::ZERO;
+        for _ in 0..90 {let t=web_time::Instant::now();w.step(1./120.);worst=worst.max(t.elapsed());}
         eprintln!("90 collision ticks {:?}; worst tick {:?}",start.elapsed(),worst);
         let after=w.body_definition(id).unwrap();
         let field=after.deformation.as_ref().unwrap();

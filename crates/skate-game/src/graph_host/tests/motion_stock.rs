@@ -148,7 +148,7 @@ fn stock_motion_factory_support_inventory() {
     let output = std::path::PathBuf::from(
         std::env::var_os("SKATE3_MOTION_INVENTORY").expect("Set SKATE3_MOTION_INVENTORY"),
     );
-    std::fs::write(&output, rows).unwrap();
+    skate_fs::write(&output, rows).unwrap();
     println!(
         "MotionGraph factory inventory: {} behaviors, {} conditions, {} hooks; {}",
         counts[0],

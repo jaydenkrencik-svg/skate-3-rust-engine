@@ -164,8 +164,8 @@ fn generalized_commands_reject_invalid_refs_and_nested_requests() {
 #[test]
 fn generalized_wrappers_route_typed_bodies_and_ignore_stale_receipts() {
     let root = std::env::temp_dir().join(format!("skate-general-api-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(
+    skate_fs::create_dir_all(&root).unwrap();
+    skate_fs::write(
         root.join("main.lua"),
         r#"
  return {
@@ -206,8 +206,8 @@ fn generalized_wrappers_route_typed_bodies_and_ignore_stale_receipts() {
         &json!({"command_results":{"tests.general":{"move":{"token":old,"ok":true}}}}),
     )
     .unwrap();
-    std::fs::remove_file(root.join("main.lua")).unwrap();
-    std::fs::remove_dir(root).unwrap();
+    skate_fs::remove_file(root.join("main.lua")).unwrap();
+    skate_fs::remove_dir(root).unwrap();
 }
 
 struct FlatGround;
@@ -320,13 +320,13 @@ fn skyline_waits_for_spawn_receipt_and_reports_failure_without_disabling_mod() {
 #[test]
 fn opt_in_mods_start_disabled_without_a_preference() {
     let base = std::env::temp_dir().join(format!("skate-opt-in-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let _ = skate_fs::remove_dir_all(&base);
     let (root, prefs) = (base.join("mods"), base.join("prefs"));
     for (dir, id, extra) in [("a", "tests.on", ""), ("b", "tests.optin", r#","enabled_by_default":false"#)] {
         let d = root.join(dir);
-        std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("main.lua"), "return {}").unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&d).unwrap();
+        skate_fs::write(d.join("main.lua"), "return {}").unwrap();
+        skate_fs::write(
             d.join("mod.json"),
             format!(r#"{{"id":"{id}","api":2,"name":"t","version":"1.0.0","author":"t","description":"t","entry":"main.lua"{extra}}}"#),
         )
@@ -337,12 +337,12 @@ fn opt_in_mods_start_disabled_without_a_preference() {
     assert!(m.packages["tests.on"].enabled, "{:?}", m.diagnostics);
     assert!(!m.packages["tests.optin"].enabled);
     // A saved preference wins.
-    std::fs::create_dir_all(&prefs).unwrap();
-    std::fs::write(prefs.join("tests.optin.json"), r#"{"enabled":true}"#).unwrap();
+    skate_fs::create_dir_all(&prefs).unwrap();
+    skate_fs::write(prefs.join("tests.optin.json"), r#"{"enabled":true}"#).unwrap();
     let mut m = crate::Manager::new(root, prefs);
     m.scan(true);
     assert!(m.packages["tests.optin"].enabled);
-    let _ = std::fs::remove_dir_all(&base);
+    let _ = skate_fs::remove_dir_all(&base);
 }
 
 /// Doc 16 L7: editing a running mod's `audio.json` or a file it names reloads only the audio
@@ -350,17 +350,18 @@ fn opt_in_mods_start_disabled_without_a_preference() {
 /// over once; editing anything else (the script) reloads the mod as before.
 #[test]
 fn audio_only_edits_keep_the_script_running() {
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    use web_time::Instant;
     let base = std::env::temp_dir().join(format!("skate-mods-audio-reload-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let _ = skate_fs::remove_dir_all(&base);
     let (root, prefs) = (base.join("mods"), base.join("prefs"));
     let d = root.join("tests.audio");
-    std::fs::create_dir_all(d.join("audio")).unwrap();
-    std::fs::write(d.join("mod.json"), r#"{"id":"tests.audio","api":2,"name":"t","version":"1.0.0","author":"t","description":"t","entry":"main.lua"}"#).unwrap();
-    std::fs::write(d.join("main.lua"), "return { on_load = function() sdk.log('loaded') end }").unwrap();
-    std::fs::write(d.join("audio/a.wav"), b"one").unwrap();
-    std::fs::write(d.join("audio/other.txt"), b"x").unwrap();
-    std::fs::write(d.join("audio.json"), r#"{"version":1,"replace":{"ambience":{"04_dt_main":"audio/a.wav"}}}"#).unwrap();
+    skate_fs::create_dir_all(d.join("audio")).unwrap();
+    skate_fs::write(d.join("mod.json"), r#"{"id":"tests.audio","api":2,"name":"t","version":"1.0.0","author":"t","description":"t","entry":"main.lua"}"#).unwrap();
+    skate_fs::write(d.join("main.lua"), "return { on_load = function() sdk.log('loaded') end }").unwrap();
+    skate_fs::write(d.join("audio/a.wav"), b"one").unwrap();
+    skate_fs::write(d.join("audio/other.txt"), b"x").unwrap();
+    skate_fs::write(d.join("audio.json"), r#"{"version":1,"replace":{"ambience":{"04_dt_main":"audio/a.wav"}}}"#).unwrap();
     let mut m = crate::Manager::new(root, prefs);
     m.scan(true);
     let loads = |m: &crate::Manager| m.commands.iter().filter(|(_, c)| matches!(c, crate::Command::Log { .. })).count();
@@ -376,7 +377,7 @@ fn audio_only_edits_keep_the_script_running() {
         m.last_scan = Instant::now() - Duration::from_secs(2);
         m.scan(false);
     };
-    std::fs::write(d.join("audio.json"), r#"{"version":1,"replace":{"ambience":{"04_dt_main":"audio/a.wav","04_dt_alt":"audio/b.wav"}}}"#).unwrap();
+    skate_fs::write(d.join("audio.json"), r#"{"version":1,"replace":{"ambience":{"04_dt_main":"audio/a.wav","04_dt_alt":"audio/b.wav"}}}"#).unwrap();
     settle(&mut m);
     let p = m.packages.get_mut("tests.audio").unwrap();
     assert!(p.running());
@@ -384,26 +385,26 @@ fn audio_only_edits_keep_the_script_running() {
     assert_eq!(p.take_audio_changes(), None, "taken once");
     assert_eq!(loads(&m), 1, "the script was not restarted");
     // A file the new audio.json names (new) and one the old named: audio only.
-    std::fs::write(d.join("audio/b.wav"), b"two").unwrap();
-    std::fs::write(d.join("audio/a.wav"), b"uno").unwrap();
+    skate_fs::write(d.join("audio/b.wav"), b"two").unwrap();
+    skate_fs::write(d.join("audio/a.wav"), b"uno").unwrap();
     settle(&mut m);
     let mut changes = m.packages.get_mut("tests.audio").unwrap().take_audio_changes().unwrap();
     changes.sort();
     assert_eq!(changes, ["audio/a.wav", "audio/b.wav"]);
     assert_eq!(loads(&m), 1);
     // Anything else: the mod reloads as before.
-    std::fs::write(d.join("audio/other.txt"), b"y").unwrap();
+    skate_fs::write(d.join("audio/other.txt"), b"y").unwrap();
     settle(&mut m);
     assert_eq!(loads(&m), 2, "a full reload");
     assert_eq!(m.packages.get_mut("tests.audio").unwrap().take_audio_changes(), None);
-    let _ = std::fs::remove_dir_all(&base);
+    let _ = skate_fs::remove_dir_all(&base);
 }
 
 #[test]
 fn input_reads_controller_identity_and_accepts_action_keys() {
     let root = std::env::temp_dir().join(format!("skate-input-api-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(
+    skate_fs::create_dir_all(&root).unwrap();
+    skate_fs::write(
         root.join("main.lua"),
         r#"
  return {
@@ -453,6 +454,6 @@ fn input_reads_controller_identity_and_accepts_action_keys() {
         let error = vm.call("on_event", json!({"bad":bad}), &json!({})).unwrap_err();
         assert!(error.contains(if bad == "key" { "unknown action key jump" } else { "controller slot must be 0..3" }), "{error}");
     }
-    std::fs::remove_file(root.join("main.lua")).unwrap();
-    std::fs::remove_dir(root).unwrap();
+    skate_fs::remove_file(root.join("main.lua")).unwrap();
+    skate_fs::remove_dir(root).unwrap();
 }

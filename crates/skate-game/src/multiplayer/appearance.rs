@@ -34,12 +34,12 @@ pub(crate) struct Appearances {
 pub(super) fn cleanup(mut exit: MessageReader<AppExit>) {
     // Generated process-private directory, never the personal import library.
     if exit.read().next().is_some() {
-        let _ = std::fs::remove_dir_all(cache_directory());
+        let _ = skate_fs::remove_dir_all(cache_directory());
     }
 }
 pub(crate) fn cache_directory() -> &'static Path {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
-    ROOT.get_or_init(|| std::env::temp_dir().join(format!("skate-online-{:016x}", super::unique())))
+    ROOT.get_or_init(|| skate_fs::temp_dir().join(format!("skate-online-{:016x}", super::unique())))
 }
 pub(super) fn sync(
     mut state: ResMut<Appearances>,
@@ -49,7 +49,7 @@ pub(super) fn sync(
 ) {
     let Some(lobby) = net.lobby.as_mut() else {
         if state.connection.is_some() {
-            let _ = std::fs::remove_dir_all(cache_directory());
+            let _ = skate_fs::remove_dir_all(cache_directory());
             *state = default();
         }
         return;
@@ -73,10 +73,10 @@ pub(super) fn sync(
                 if let Some(key) = native {
                     return serde_json::to_vec(&Look::Native(key)).map_err(|e| e.to_string());
                 }
-                if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() as usize >= MAX_BLOB {
+                if skate_fs::metadata(&path).map_err(|e| e.to_string())?.len() as usize >= MAX_BLOB {
                     return Err("Imported character exceeds the 64 MiB online limit".into());
                 }
-                let glb = std::fs::read(path).map_err(|e| e.to_string())?;
+                let glb = skate_fs::read(path).map_err(|e| e.to_string())?;
                 validate_glb(&glb)?;
                 let mut bytes = vec![0];
                 bytes.extend(glb);
@@ -138,12 +138,12 @@ pub(super) fn sync(
             if bytes.first() == Some(&0) {
                 validate_glb(&bytes[1..])?;
                 let name = format!("{}.glb", blake3::Hash::from_bytes(hash).to_hex());
-                std::fs::create_dir_all(cache_directory()).map_err(|e| e.to_string())?;
+                skate_fs::create_dir_all(cache_directory()).map_err(|e| e.to_string())?;
                 let path = cache_directory().join(&name);
-                if !path.exists() {
+                if !skate_fs::exists(&path) {
                     let pending = path.with_extension("tmp");
-                    std::fs::write(&pending, &bytes[1..]).map_err(|e| e.to_string())?;
-                    std::fs::rename(pending, path).map_err(|e| e.to_string())?;
+                    skate_fs::write(&pending, &bytes[1..]).map_err(|e| e.to_string())?;
+                    skate_fs::rename(pending, path).map_err(|e| e.to_string())?;
                 }
                 Ok(Look::Imported(format!("online-characters://{name}")))
             } else {
@@ -361,6 +361,6 @@ mod tests {
     #[ignore = "requires an owned imported GLB via SKATE_ONLINE_TEST_GLB"]
     fn online_appearance_accepts_owned_import() {
         let path = std::env::var("SKATE_ONLINE_TEST_GLB").unwrap();
-        validate_glb(&std::fs::read(path).unwrap()).unwrap();
+        validate_glb(&skate_fs::read(path).unwrap()).unwrap();
     }
 }

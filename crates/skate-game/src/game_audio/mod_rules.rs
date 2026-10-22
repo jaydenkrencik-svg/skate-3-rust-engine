@@ -568,10 +568,10 @@ mod tests {
         assert!(r.runtime.is_empty() && r.dirty);
         // An overlay of rules only.
         let dir = std::env::temp_dir().join(format!("skate-audio-rules-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audio")).unwrap();
-        std::fs::write(dir.join("audio/pop.wav"), super::super::mod_voices::tests::tone_wav(800.0, 0.1, 48000, 0.5)).unwrap();
-        std::fs::write(dir.join("audio.json"), json!({"version": 1, "rules": {"my_pop": {"match": {"tag": "pop"}, "action": "replace", "play": {"path": "audio/pop.wav"}}}}).to_string()).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(dir.join("audio")).unwrap();
+        skate_fs::write(dir.join("audio/pop.wav"), super::super::mod_voices::tests::tone_wav(800.0, 0.1, 48000, 0.5)).unwrap();
+        skate_fs::write(dir.join("audio.json"), json!({"version": 1, "rules": {"my_pop": {"match": {"tag": "pop"}, "action": "replace", "play": {"path": "audio/pop.wav"}}}}).to_string()).unwrap();
         let mut content = super::super::AudioContent::default();
         content.sync([("dev.a", dir.as_path(), 1)].into_iter());
         assert_eq!(content.rules_generation, 1);
@@ -586,15 +586,15 @@ mod tests {
         assert_eq!(content.rules_generation, 2);
         assert!(!content.restart_pending());
         // A missing WAV leaves the rule out (logged), the others stay.
-        std::fs::remove_file(dir.join("audio/pop.wav")).unwrap();
+        skate_fs::remove_file(dir.join("audio/pop.wav")).unwrap();
         let mut c2 = super::super::AudioContent::default();
-        std::fs::write(dir.join("audio.json"), json!({"version": 1, "rules": {"q": {"match": {"tag": "land"}, "action": "mute"}}}).to_string()).unwrap();
+        skate_fs::write(dir.join("audio.json"), json!({"version": 1, "rules": {"q": {"match": {"tag": "land"}, "action": "mute"}}}).to_string()).unwrap();
         c2.sync([("dev.c", dir.as_path(), 1)].into_iter());
         let set = compile(&mut r, &c2, &mut ModVoices::default(), Tags::default()).unwrap();
         assert_eq!(set.rules.len(), 2);
         r.clear_owner("dev.b");
         assert!(compile(&mut r, &super::super::AudioContent::default(), &mut ModVoices::default(), Tags::default()).is_none(), "no rules: no set");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     /// The rule tags the mod side accepts are event tags of the engine (the ones on post sites).

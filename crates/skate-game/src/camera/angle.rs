@@ -90,7 +90,7 @@ impl CameraAngleSettings {
     /// A missing file is the default; an unreadable one is reported and ignored.
     pub fn load(asset_root: &Path) -> Self {
         let path = Self::path(asset_root);
-        let selected = match std::fs::read(&path) {
+        let selected = match skate_fs::read(&path) {
             Ok(bytes) => serde_json::from_slice::<Saved>(&bytes).map(|s| s.angle).unwrap_or_else(|e| {
                 warn!("Camera settings {}: {e}", path.display());
                 CameraAngle::default()
@@ -101,8 +101,8 @@ impl CameraAngleSettings {
     }
 
     pub fn save(&self) -> Result<(), String> {
-        std::fs::create_dir_all(self.path.parent().unwrap()).map_err(|e| e.to_string())?;
-        std::fs::write(&self.path, serde_json::to_vec_pretty(&Saved { angle: self.selected }).map_err(|e| e.to_string())?)
+        skate_fs::create_dir_all(self.path.parent().unwrap()).map_err(|e| e.to_string())?;
+        skate_fs::write(&self.path, serde_json::to_vec_pretty(&Saved { angle: self.selected }).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())
     }
 
@@ -218,9 +218,9 @@ mod tests {
         s.selected = CameraAngle::Low;
         s.save().unwrap();
         assert_eq!(CameraAngleSettings::load(&root).selected, CameraAngle::Low);
-        std::fs::write(CameraAngleSettings::path(&root), br#"{"angle":"sideways"}"#).unwrap();
+        skate_fs::write(CameraAngleSettings::path(&root), br#"{"angle":"sideways"}"#).unwrap();
         assert_eq!(CameraAngleSettings::load(&root).selected, CameraAngle::High);
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     #[test]

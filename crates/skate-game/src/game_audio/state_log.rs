@@ -139,7 +139,7 @@ fn queue() -> Option<&'static std::sync::mpsc::SyncSender<String>> {
             std::thread::Builder::new()
                 .name("audio-state-log".into())
                 .spawn(move || {
-                    let Ok(file) = std::fs::File::create(&path) else { return };
+                    let Ok(file) = skate_fs::File::create(&path) else { return };
                     let mut out = std::io::BufWriter::with_capacity(1 << 16, file);
                     if writeln!(out, "{HEADER}").is_err() {
                         return;

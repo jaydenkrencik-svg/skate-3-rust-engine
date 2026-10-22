@@ -590,7 +590,7 @@ mod tests {
     #[ignore = "needs the private install data"]
     fn a_message_starts_two_voices_then_follows_the_outputs() {
         let t = tuning();
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
+        let bytes = skate_fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
         let Ok(bytes) = bytes else { panic!("missing private data: no MixMap") };
         let mut m = MixMap::from_bytes(&bytes).unwrap();
         let mut c = CollisionManager::default();
@@ -645,7 +645,7 @@ mod tests {
     #[ignore = "needs the private install data"]
     fn with_the_submix_each_voice_starts_on_its_mono_bus_at_the_category_send() {
         let t = tuning();
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
+        let bytes = skate_fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
         let Ok(bytes) = bytes else { panic!("missing private data: no MixMap") };
         let l = Listener { camera: [-3.0, 1.5, 0.0], view: [1.0, 0.0, 0.0], ..Listener::default() };
         let msg = Message { material: [95, 9], tier: [1, 1], position: [0.0; 3], level: [20000, 30000], local: true };

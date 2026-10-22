@@ -118,9 +118,9 @@ impl FrameLog {
 
     pub(crate) fn open(path: PathBuf) -> std::io::Result<Self> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
+            skate_fs::create_dir_all(parent)?;
         }
-        let file = std::fs::File::create(&path)?;
+        let file = skate_fs::File::create(&path)?;
         let (sender, receiver) = mpsc::sync_channel::<Row>(QUEUE_CAPACITY);
         let thread = std::thread::Builder::new()
             .name("frame-log".into())
@@ -211,7 +211,7 @@ mod tests {
         }
         // Dropping flushes and joins the writer, so everything is on disk now.
         drop(log);
-        let text = std::fs::read_to_string(&path).unwrap();
+        let text = skate_fs::read_to_string(&path).unwrap();
         let mut lines = text.lines();
         assert_eq!(lines.next(), Some(MAGIC));
         assert_eq!(lines.next(), Some(HEADER));
@@ -219,6 +219,6 @@ mod tests {
         assert_eq!(rows.len(), 500);
         assert!(rows.iter().enumerate().all(|(i, r)| r.frame == i as u64 + 1));
         assert_eq!(rows.iter().filter(|r| r.hitch).count(), 5);
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 }

@@ -1,4 +1,6 @@
 //! Lua mod packages (API 2): low-level physics/graphics hooks, no Vehicle class.
+// The browser build stubs the Lua VM (vm.rs), leaving its host-side helpers unused there.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod archive;
 pub mod audio;
 pub mod audio_content;
@@ -33,8 +35,9 @@ use serde_json::Value;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 /// `SKATE3_MODS_ENABLE=<id>[,<id>…]` lists mods that start enabled without a saved preference
 /// (dev and test mods whose manifest has `"enabled_by_default": false`). A saved preference wins.
@@ -142,7 +145,7 @@ impl Manager {
         self.diagnostics.clear();
         let mut found = BTreeMap::<String, (PathBuf, Manifest, (u64, Vec<String>))>::new();
         let mut duplicates = std::collections::BTreeSet::new();
-        let dirs = match std::fs::read_dir(&self.root) {
+        let dirs = match skate_fs::read_dir(&self.root) {
             Ok(d) => d,
             Err(e) => {
                 self.diagnostics
@@ -156,7 +159,7 @@ impl Manager {
             .filter(|p| {
                 !p.file_name()
                     .is_some_and(|n| n.to_string_lossy().starts_with('.'))
-                    && (p.is_dir()
+                    && (skate_fs::is_dir(&p)
                         || p.extension()
                             .is_some_and(|e| e.eq_ignore_ascii_case("zip")))
             })
@@ -168,7 +171,7 @@ impl Manager {
             );
         }
         for source in paths.into_iter().take(128) {
-            let path = if source.is_file() {
+            let path = if skate_fs::is_file(&source) {
                 match self.archives.materialize(&self.root, &source) {
                     Ok(path) => path,
                     Err(e) => {
@@ -212,7 +215,7 @@ impl Manager {
                     self.invalid_since.remove(id);
                     return None;
                 }
-                if !p.root.exists() || force {
+                if !skate_fs::exists(&p.root) || force {
                     return Some(id.clone());
                 }
                 let since = self
@@ -328,7 +331,7 @@ impl Manager {
     /// (`enabled_by_default`, default true) or when `SKATE3_MODS_ENABLE` lists its id.
     fn read_preferences(&mut self, id: &str, enabled_by_default: bool) -> Preferences {
         let fresh = enabled_by_default || enabled_by_env(id);
-        match std::fs::read(self.preferences.join(format!("{id}.json"))) {
+        match skate_fs::read(self.preferences.join(format!("{id}.json"))) {
             Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|e| {
                 self.diagnostics
                     .push(format!("Settings {id}: {e}; defaults used"));
@@ -350,10 +353,10 @@ impl Manager {
 
     fn save(&self, id: &str) -> Result<(), String> {
         let p = self.packages.get(id).ok_or("Unknown mod")?;
-        std::fs::create_dir_all(&self.preferences).map_err(|e| e.to_string())?;
+        skate_fs::create_dir_all(&self.preferences).map_err(|e| e.to_string())?;
         let file = self.preferences.join(format!("{id}.json"));
         let temp = self.preferences.join(format!("{id}.tmp"));
-        std::fs::write(
+        skate_fs::write(
             &temp,
             serde_json::to_vec_pretty(&Preferences {
                 enabled: p.enabled,
@@ -362,7 +365,7 @@ impl Manager {
             .unwrap(),
         )
         .map_err(|e| e.to_string())?;
-        std::fs::rename(temp, file).map_err(|e| e.to_string())
+        skate_fs::rename(temp, file).map_err(|e| e.to_string())
     }
 
     pub fn enable(&mut self, id: &str, enabled: bool) -> Result<(), String> {

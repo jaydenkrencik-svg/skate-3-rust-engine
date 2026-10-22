@@ -22,8 +22,9 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     path::Path,
     sync::Arc,
-    time::Instant,
+    
 };
+use web_time::Instant;
 
 pub(crate) const TEST_WORLD: &str = "TEST_WORLD";
 pub(crate) const READY: &str = "SKATE_VALIDATOR_READY";

@@ -2,7 +2,7 @@
 use std::{path::{Path, PathBuf}, process::Command};
 
 fn installed(base: &Path) -> Result<Option<(PathBuf, serde_json::Value)>, String> {
-    let bytes = match std::fs::read(base.join("installation.json")) {
+    let bytes = match skate_fs::read(base.join("installation.json")) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.to_string()),
@@ -17,9 +17,9 @@ fn installed(base: &Path) -> Result<Option<(PathBuf, serde_json::Value)>, String
         return Err("Invalid installation path".into());
     }
     let assets = base.join(relative).join("assets");
-    if !assets.is_dir() { return Ok(None); }
-    if !assets.canonicalize().map_err(|e| e.to_string())?
-        .starts_with(base.canonicalize().map_err(|e| e.to_string())?) {
+    if !skate_fs::is_dir(&assets) { return Ok(None); }
+    if !skate_fs::canonicalize(&assets).map_err(|e| e.to_string())?
+        .starts_with(skate_fs::canonicalize(&base).map_err(|e| e.to_string())?) {
         return Err("Installation escapes its package data directory".into());
     }
     Ok(Some((assets, marker)))
@@ -107,8 +107,8 @@ fn stamp_pipelines(
     updated["pipelines"] = expected.clone();
     let bytes = serde_json::to_vec_pretty(&updated).map_err(|e| e.to_string())?;
     let temporary = base.join("installation.json.tmp");
-    std::fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&temporary, base.join("installation.json")).map_err(|e| e.to_string())
+    skate_fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
+    skate_fs::rename(&temporary, base.join("installation.json")).map_err(|e| e.to_string())
 }
 
 fn installation_ready(
@@ -122,7 +122,7 @@ fn installation_ready(
     expected.is_none_or(|versions| {
         pipelines_acceptable(marker, versions, equivalence, install_root)
     })
-        && assets.join("private/game.json").is_file()
+        && skate_fs::is_file(&assets.join("private/game.json"))
         && marker.get("outputs").is_none_or(|groups| {
             groups.as_object().is_some_and(|groups| {
                 groups
@@ -134,10 +134,15 @@ fn installation_ready(
 }
 
 pub(crate) fn asset_root() -> Result<PathBuf, String> {
+    // The browser build reads the web server's data directory; the server's
+    // operator prepares it with the normal setup.
+    if cfg!(target_arch = "wasm32") {
+        return Ok(PathBuf::from(skate_fs::WEB_ROOT));
+    }
     if std::env::args_os().any(|arg| arg == "--assets") { return Ok(PathBuf::from("assets")); }
     if let Some(root) = std::env::var_os("SKATE3_ASSETS") {
         let path = PathBuf::from(root);
-        if path.is_dir() {
+        if skate_fs::is_dir(&path) {
             return Ok(path);
         }
         return Err(format!(
@@ -150,7 +155,7 @@ pub(crate) fn asset_root() -> Result<PathBuf, String> {
     let base = root.join("data");
     let mut expected_customiser = None;
     let mut equivalence = None;
-    let expected = match std::fs::read(root.join("release.json")) {
+    let expected = match skate_fs::read(root.join("release.json")) {
         Ok(bytes) => {
             let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?.trim_start_matches('\u{feff}');
             let release: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
@@ -184,7 +189,7 @@ pub(crate) fn asset_root() -> Result<PathBuf, String> {
         }
     }
     let setup = root.join("support/skate3setup.exe");
-    if !setup.is_file() {
+    if !skate_fs::is_file(&setup) {
         return Err(
             "This copy has not been set up. Use the complete Windows package, pass --assets DIRECTORY, or set SKATE3_ASSETS for development.".into(),
         );
@@ -209,7 +214,7 @@ pub(crate) fn asset_root() -> Result<PathBuf, String> {
 }
 
 fn customiser_files_ready(assets: &Path) -> bool {
-    std::fs::read(assets.join("private/customisation/current.json"))
+    skate_fs::read(assets.join("private/customisation/current.json"))
         .ok()
         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
         .is_some_and(|v| {
@@ -220,10 +225,10 @@ fn customiser_files_ready(assets: &Path) -> bool {
         })
         && ["library-v3.json", "extra-menu.json", "native-lighting.json", "native-roster/complete.json"]
             .iter()
-            .all(|name| crate::customiser_parts::asset_directory(assets).join(name).is_file())
+            .all(|name| skate_fs::is_file(&crate::customiser_parts::asset_directory(assets).join(name)))
         && ["catalog", "library", "menu", "lighting", "roster"].iter().all(|stage| {
             let directory = crate::customiser_parts::asset_directory(assets);
-            std::fs::read(directory.join(format!("{stage}-complete.json")))
+            skate_fs::read(directory.join(format!("{stage}-complete.json")))
                 .ok()
                 .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
                 .is_some_and(|v| receipt_present(&directory, &v["files"]))
@@ -232,7 +237,7 @@ fn customiser_files_ready(assets: &Path) -> bool {
 
 fn customiser_current(assets: &Path, expected: Option<&str>) -> bool {
     expected.is_none_or(|expected| {
-        let degraded = std::fs::read(assets.join("private/customisation/customiser-availability.json"))
+        let degraded = skate_fs::read(assets.join("private/customisation/customiser-availability.json"))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
         if let Some(v) = degraded.filter(|v| {
@@ -244,7 +249,7 @@ fn customiser_current(assets: &Path, expected: Option<&str>) -> bool {
             if v["status"] == "retained" {
                 let directory = crate::customiser_parts::asset_directory(assets);
                 return ["catalog", "library", "menu", "lighting", "roster"].iter().all(|stage| {
-                    std::fs::read(directory.join(format!("{stage}-complete.json")))
+                    skate_fs::read(directory.join(format!("{stage}-complete.json")))
                         .ok()
                         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
                         .is_some_and(|v| receipt_present(&directory, &v["files"]))
@@ -258,7 +263,7 @@ fn customiser_current(assets: &Path, expected: Option<&str>) -> bool {
 fn stamp_customiser(assets: &Path, expected: &str) -> Result<(), String> {
     let path = assets.join("private/customisation/current.json");
     let mut current: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?)
+        serde_json::from_slice(&skate_fs::read(&path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
     if current["fingerprint"].as_str() == Some(expected) {
         return Ok(());
@@ -266,8 +271,8 @@ fn stamp_customiser(assets: &Path, expected: &str) -> Result<(), String> {
     current["fingerprint"] = serde_json::Value::String(expected.to_owned());
     let bytes = serde_json::to_vec_pretty(&current).map_err(|e| e.to_string())?;
     let temporary = path.with_extension("json.tmp");
-    std::fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&temporary, path).map_err(|e| e.to_string())?;
+    skate_fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
+    skate_fs::rename(&temporary, path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -278,7 +283,7 @@ fn receipt_present(root: &Path, files: &serde_json::Value) -> bool {
         let relative = Path::new(name);
         !relative.is_absolute()
             && relative.components().all(|c| matches!(c, std::path::Component::Normal(_)))
-            && std::fs::metadata(root.join(relative)).ok()
+            && skate_fs::metadata(root.join(relative)).ok()
                 .is_some_and(|m| m.is_file() && Some(m.len()) == entry["size"].as_u64())
     }))
 }
@@ -289,28 +294,28 @@ mod tests {
     #[test]
     fn acknowledged_optional_failure_is_versioned_and_retained_data_is_checked() {
         let root = std::env::temp_dir().join(format!("sk8-availability-{}-{}", std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_nanos()));
         let base = root.join("private/customisation");
-        std::fs::create_dir_all(&base).unwrap();
+        skate_fs::create_dir_all(&base).unwrap();
         let availability = base.join("customiser-availability.json");
-        std::fs::write(&availability, br#"{"version":1,"fingerprint":"new","status":"unavailable"}"#).unwrap();
+        skate_fs::write(&availability, br#"{"version":1,"fingerprint":"new","status":"unavailable"}"#).unwrap();
         assert!(customiser_current(&root, Some("new")));
         assert!(!customiser_current(&root, Some("future")));
         assert_eq!(crate::customiser_parts::asset_directory(&root), base.join("unavailable"));
-        std::fs::write(&availability, br#"{"version":1,"fingerprint":"new","status":"retained"}"#).unwrap();
+        skate_fs::write(&availability, br#"{"version":1,"fingerprint":"new","status":"retained"}"#).unwrap();
         assert!(!customiser_current(&root, Some("new")));
-        std::fs::write(base.join("current.json"), br#"{"set":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#).unwrap();
+        skate_fs::write(base.join("current.json"), br#"{"set":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#).unwrap();
         let directory = base.join("sets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join("payload"), b"ok").unwrap();
+        skate_fs::create_dir_all(&directory).unwrap();
+        skate_fs::write(directory.join("payload"), b"ok").unwrap();
         for stage in ["catalog", "library", "menu", "lighting", "roster"] {
-            std::fs::write(directory.join(format!("{stage}-complete.json")),
+            skate_fs::write(directory.join(format!("{stage}-complete.json")),
                 br#"{"files":{"payload":{"size":2}}}"#).unwrap();
         }
         assert!(customiser_current(&root, Some("new")));
-        std::fs::remove_file(directory.join("payload")).unwrap();
+        skate_fs::remove_file(directory.join("payload")).unwrap();
         assert!(!customiser_current(&root, Some("new")));
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn receipts_reject_missing_files_empty_lists_and_traversal() {
@@ -325,14 +330,14 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "sk8-customiser-receipt-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
         ));
         let base = root.join("private/customisation/sets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        std::fs::create_dir_all(&base).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&base).unwrap();
+        skate_fs::write(
             root.join("private/customisation/current.json"),
             br#"{"version":1,"set":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","fingerprint":"old","source":"source"}"#,
         )
@@ -345,13 +350,13 @@ mod tests {
         ] {
             let path = base.join(name);
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).unwrap();
+                skate_fs::create_dir_all(parent).unwrap();
             }
-            std::fs::write(path, b"ok").unwrap();
+            skate_fs::write(path, b"ok").unwrap();
         }
-        std::fs::write(base.join("payload"), b"ok").unwrap();
+        skate_fs::write(base.join("payload"), b"ok").unwrap();
         for stage in ["catalog", "library", "menu", "lighting", "roster"] {
-            std::fs::write(
+            skate_fs::write(
                 base.join(format!("{stage}-complete.json")),
                 br#"{"files":{"payload":{"size":2}}}"#,
             )
@@ -360,11 +365,11 @@ mod tests {
         assert!(customiser_current(&root, Some("new")));
         stamp_customiser(&root, "new").unwrap();
         let current = serde_json::from_slice::<serde_json::Value>(
-            &std::fs::read(root.join("private/customisation/current.json")).unwrap(),
+            &skate_fs::read(root.join("private/customisation/current.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(current["fingerprint"].as_str(), Some("new"));
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -379,17 +384,17 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "sk8-pipeline-receipt-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
         ));
         let maps = root.join("maps/university.skate");
-        std::fs::create_dir_all(maps.parent().unwrap()).unwrap();
-        std::fs::write(&maps, b"test").unwrap();
+        skate_fs::create_dir_all(maps.parent().unwrap()).unwrap();
+        skate_fs::write(&maps, b"test").unwrap();
         assert!(pipelines_acceptable(&marker, &expected, None, &root));
         assert!(!pipelines_current(&marker, &expected, None));
-        std::fs::remove_dir_all(root).unwrap();
+        skate_fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

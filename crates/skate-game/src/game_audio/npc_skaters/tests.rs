@@ -425,9 +425,9 @@ fn a_ghost_claims_instance_1_releases_and_survives_a_map_change() {
     let Some(dir) = std::env::var_os("SKATE_AUDIO_STATE_LOGS").filter(|v| !v.is_empty()).map(std::path::PathBuf::from) else {
         panic!("missing private data: SKATE_AUDIO_STATE_LOGS (the audio state logs) is not set")
     };
-    let Some(log) = std::fs::read_dir(&dir).ok().and_then(|d| d.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv")).max())
+    let Some(log) = skate_fs::read_dir(&dir).ok().and_then(|d| d.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv")).max())
     else { panic!("missing private data: no state log in {}", dir.display()) };
-    let text = std::fs::read_to_string(&log).unwrap();
+    let text = skate_fs::read_to_string(&log).unwrap();
     let ghost = super::super::state_replay::ghost_states(&text, 30.0, 20.0, [5.0, 0.0, 0.0]).unwrap();
     let mut host = NpcHost::default();
     let mut published = super::NpcSkaters::default();
@@ -487,12 +487,12 @@ fn the_npc_instance_runs_wheels_clothing_and_the_bail_grunt() {
     let Some(dir) = std::env::var_os("SKATE_AUDIO_STATE_LOGS").filter(|v| !v.is_empty()).map(std::path::PathBuf::from) else {
         panic!("missing private data: SKATE_AUDIO_STATE_LOGS (the audio state logs) is not set")
     };
-    let mut logs: Vec<std::path::PathBuf> = std::fs::read_dir(&dir).map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv")).collect()).unwrap_or_default();
+    let mut logs: Vec<std::path::PathBuf> = skate_fs::read_dir(&dir).map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "tsv")).collect()).unwrap_or_default();
     logs.sort();
     // The newest log with a bail and some air.
     let mut chosen = None;
     for log in logs.iter().rev() {
-        let Ok(text) = std::fs::read_to_string(log) else { continue };
+        let Ok(text) = skate_fs::read_to_string(log) else { continue };
         let Ok(states) = super::super::state_replay::ghost_states(&text, 0.0, 600.0, [5.0, 0.0, 0.0]) else { continue };
         let bails = states.windows(2).filter(|w| w[1].bail && !w[0].bail).count();
         let air = states.iter().filter(|s| s.airborne).count();
@@ -611,7 +611,7 @@ fn npc_bed_follows_the_recomp_rows() {
     let Some(dir) = std::env::var_os("SKATE_NPC_GREC").filter(|v| !v.is_empty()) else {
         panic!("missing private data: SKATE_NPC_GREC (npc_grec_rows.py --json)");
     };
-    let Ok(text) = std::fs::read_to_string(std::path::Path::new(&dir).join("npc_rows_180430.json")) else { panic!("missing private data: npc_rows_180430.json") };
+    let Ok(text) = skate_fs::read_to_string(std::path::Path::new(&dir).join("npc_rows_180430.json")) else { panic!("missing private data: npc_rows_180430.json") };
     let rows: Vec<GrecRow> = serde_json::from_str(&text).unwrap();
     let straight: Vec<&GrecRow> = rows.iter().filter(|r| r.wheels > 0 && r.air == 0 && r.speed >= 1.0 && r.truck.running != 0 && r.turn.abs() <= 0.02 && r.i.abs() < 0.02 && r.bk < 0.02 && r.material != 143).collect();
     assert!(straight.len() >= 100, "{} straight rows", straight.len());

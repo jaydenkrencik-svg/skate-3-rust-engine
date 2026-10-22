@@ -141,7 +141,7 @@ fn load(mut commands: Commands, config: Res<crate::config::Config>, sources: Que
         return;
     };
     let path = config.asset_root.join("private/character-lighting.json");
-    let mut data = match std::fs::read(&path)
+    let mut data = match skate_fs::read(&path)
         .map_err(|e| e.to_string())
         .and_then(|b| serde_json::from_slice::<LightingData>(&b).map_err(|e| e.to_string()))
     {
@@ -151,19 +151,19 @@ fn load(mut commands: Commands, config: Res<crate::config::Config>, sources: Que
             return;
         }
     };
-    data.native = std::fs::read(crate::customiser_parts::asset_directory(&config.asset_root).join("native-lighting.json"))
+    data.native = skate_fs::read(crate::customiser_parts::asset_directory(&config.asset_root).join("native-lighting.json"))
         .ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let name = map_path.file_stem().unwrap_or_default().to_string_lossy();
     let overlay = config
         .asset_root
         .join("private/native-lighting")
         .join(format!("{name}.irradiance"));
-    let probe_path = if overlay.is_file() {
+    let probe_path = if skate_fs::is_file(&overlay) {
         overlay
     } else {
         map_path.with_extension("irradiance")
     };
-    let probes = match std::fs::read(probe_path)
+    let probes = match skate_fs::read(probe_path)
         .map_err(|e| e.to_string())
         .and_then(|b| Irradiance::parse(&b))
     {
@@ -177,7 +177,7 @@ fn load(mut commands: Commands, config: Res<crate::config::Config>, sources: Que
         .asset_root
         .join("private/native-skies")
         .join(format!("{name}.json"));
-    let sky: serde_json::Value = match std::fs::read(sky_path)
+    let sky: serde_json::Value = match skate_fs::read(sky_path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
     {

@@ -118,7 +118,7 @@ fn merged(mut movie: Value, shared: &serde_json::Map<String, Value>) -> Value {
 }
 
 fn read_json(path: &Path) -> Result<Value, String> {
-    serde_json::from_slice(&std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?)
+    serde_json::from_slice(&skate_fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?)
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -126,7 +126,7 @@ impl RetailMenuMovies {
     /// Reads the exported set; an absent set gives an empty resource.
     pub fn read(root: &Path) -> Result<Self, String> {
         let manifest_path = root.join("manifest.json");
-        if !manifest_path.is_file() {
+        if !skate_fs::is_file(&manifest_path) {
             return Ok(Self::default());
         }
         let manifest = read_json(&manifest_path)?;
@@ -623,7 +623,7 @@ mod tests {
         let root = std::env::var("SKATE3_MENU_MOVIES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| crate::apt_imports::main_checkout().join("assets/private/menu-movies"));
-        if !root.join("manifest.json").is_file() {
+        if !skate_fs::is_file(&root.join("manifest.json")) {
             eprintln!("skipped: no exported menu movies in {}", root.display());
             return;
         }
@@ -704,7 +704,7 @@ mod tests {
                         let Some(MenuImage::Retail { path, width, height }) = m.image(&texture) else {
                             panic!("{key} shape {}: no image {texture}", c.id)
                         };
-                        let bytes = std::fs::metadata(root.join(path)).unwrap().len();
+                        let bytes = skate_fs::metadata(root.join(path)).unwrap().len();
                         assert_eq!(bytes, u64::from(width) * u64::from(height) * 4, "{path}");
                         let origin = movie.shape_origins.get(&c.id).map_or(key.as_str(), |(k, _)| k);
                         bitmaps.insert(bitmap_id(origin, unit.bitmap.unwrap()));

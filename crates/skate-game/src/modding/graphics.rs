@@ -3,7 +3,8 @@
 use super::Mods;
 use bevy::{prelude::*, scene::{SceneInstance,SceneSpawner}};
 use skate_mods::scene::{GraphicsDefinition, NodeState, TransformOptions, TransformState};
-use std::{collections::{BTreeMap,BTreeSet},time::Instant};
+use std::{collections::{BTreeMap,BTreeSet}};
+use web_time::Instant;
 
 #[derive(Clone)]
 pub(super) struct TimedNode { pub state:NodeState, pub received:Instant }
@@ -49,10 +50,10 @@ pub(super) fn node_transform(authored:Transform, state:&NodeState, age:f32) -> T
 pub(super) fn asset_path(mods:&Mods, package_id:&str, path:&str) -> Result<String,String> {
     if !skate_mods::scene::valid_asset(path) || path.is_empty() { return Err("invalid GLB asset path".into()); }
     let package=mods.manager.packages.get(package_id).ok_or("missing local package")?;
-    let root=package.root.canonicalize().map_err(|e|format!("package path: {e}"))?;
-    let full=root.join(path).canonicalize().map_err(|e|format!("GLB {path}: {e}"))?;
-    if !full.starts_with(&root) || !full.is_file() { return Err("GLB escapes its package".into()); }
-    let reader_root=super::package_root().canonicalize().map_err(|e|e.to_string())?;
+    let root=skate_fs::canonicalize(&package.root).map_err(|e|format!("package path: {e}"))?;
+    let full=skate_fs::canonicalize(&root.join(path)).map_err(|e|format!("GLB {path}: {e}"))?;
+    if !full.starts_with(&root) || !skate_fs::is_file(&full) { return Err("GLB escapes its package".into()); }
+    let reader_root=skate_fs::canonicalize(&super::package_root()).map_err(|e|e.to_string())?;
     let relative=full.strip_prefix(&reader_root).map_err(|_|"GLB outside mods asset reader")?;
     Ok(format!("mods://{}",relative.to_string_lossy().replace('\\',"/")))
 }
@@ -338,11 +339,11 @@ mod deformation_timing {
             transform:default(),visible:true,serial:1,nodes:BTreeMap::new(),bindings:BTreeMap::new(),ambiguous:BTreeSet::new(),warned:BTreeSet::new(),ready:true,deformation:default()};
         let mut field=skate_dynamics::deformation::Field {min:[-2.,-1.,-3.],max:[2.,2.,3.],resolution:[9,5,17],offsets:vec![[0.;3];9*5*17],revision:1};
         for i in 0..field.offsets.len() {let p=field.rest(i);if p.z>1. {field.offsets[i][2]=-0.2;}}
-        let t=std::time::Instant::now();super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);
+        let t=web_time::Instant::now();super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);
         let initial=t.elapsed();
         field.revision+=1;for p in &mut field.offsets {p[2]*=1.2;}
-        let t=std::time::Instant::now();super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);let update=t.elapsed();
-        let t=std::time::Instant::now();for _ in 0..10000 {super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);}
+        let t=web_time::Instant::now();super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);let update=t.elapsed();
+        let t=web_time::Instant::now();for _ in 0..10000 {super::super::graphics_deformation::sync(&mut world,&mut owned,1,&field,[0.;3]);}
         eprintln!("Skyline welded vertices={vertices}; initial mesh bind/update={initial:?}; subsequent damage={update:?}; 10000 unchanged checks={:?}; excludes GPU upload/tangents",t.elapsed());
     }
 }

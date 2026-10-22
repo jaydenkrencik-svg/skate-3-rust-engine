@@ -100,7 +100,7 @@ pub(crate) fn main_checkout() -> std::path::PathBuf {
         return path.into();
     }
     let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    std::fs::read_to_string(here.join(".git"))
+    skate_fs::read_to_string(here.join(".git"))
         .ok()
         .and_then(|text| {
             let dir = std::path::PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
@@ -484,14 +484,14 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()
         });
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = skate_fs::read_dir(&dir) else {
             eprintln!("skipped: no decoded menu movies in {dir}");
             return;
         };
         let mut lib = BTreeMap::new();
         for entry in entries.flatten() {
             let json: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(entry.path()).unwrap()).unwrap();
+                serde_json::from_slice(&skate_fs::read(entry.path()).unwrap()).unwrap();
             if json.get("imports").is_none() {
                 eprintln!(
                     "skipped: {:?} predates the imports field, re-run apt_actions_json.py",

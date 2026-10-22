@@ -14,7 +14,7 @@ struct Catalog { version: u32, destinations: Vec<Destination> }
 
 pub(crate) fn load(assets: &Path) -> Result<Vec<Destination>, String> {
     let path = assets.join("private/teleports.json");
-    let bytes = std::fs::read(&path).map_err(|e| format!("Teleport locations: {e}"))?;
+    let bytes = skate_fs::read(&path).map_err(|e| format!("Teleport locations: {e}"))?;
     let catalog: Catalog = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
     if catalog.version != 1 { return Err("Unsupported teleport catalog version".into()); }
     let mut ids = std::collections::HashSet::new();

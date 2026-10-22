@@ -2,7 +2,8 @@
 //! separate core operations; this loader never repairs missing bone channels.
 use crate::animation_metadata::AnimationMetadata;
 use serde::Deserialize;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, path::Path};
+use skate_fs as fs;
 mod native;
 
 /// Scale xyz, quaternion xyzw, translation xyz; each component is an f32 word.

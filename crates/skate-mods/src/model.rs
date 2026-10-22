@@ -15,7 +15,7 @@ pub struct ModelGeometry {
 }
 
 fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
-    let file = std::fs::File::open(path).map_err(|e| format!("model {}: {e}", path.display()))?;
+    let file = skate_fs::File::open(path).map_err(|e| format!("model {}: {e}", path.display()))?;
     if file.metadata().map_err(|e| e.to_string())?.len() > MAX_GLB_BYTES {
         return Err("model GLB exceeds 64 MiB".into());
     }

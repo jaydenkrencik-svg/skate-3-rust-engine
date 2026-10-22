@@ -5,7 +5,8 @@
 //! Each attribute stores two strings, a float word and a boolean byte.
 //! Keep all three representations: parsing the string again loses stock data.
 use crate::AssetError;
-use std::{fs, path::Path};
+use std::{path::Path};
+use skate_fs as fs;
 
 pub mod attributes;
 pub mod binding;

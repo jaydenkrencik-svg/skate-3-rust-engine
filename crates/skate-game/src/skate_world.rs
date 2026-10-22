@@ -675,7 +675,7 @@ mod tests {
         world.init_resource::<Assets<crate::retail_render::WorldMaterial>>();
         world.init_resource::<Assets<bevy::render::storage::ShaderStorageBuffer>>();
         let mut scene = crate::map_render::PreparedScene::new(&world);
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         scene.prepare(Some(&map), &root);
         let elapsed = started.elapsed();
         let stats = scene.stats;

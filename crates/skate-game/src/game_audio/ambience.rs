@@ -259,11 +259,11 @@ mod tests {
         use super::super::library::{OverlaySource, tests::{content_fixture, test_wav}};
         let (dir, mods) = content_fixture("ambience-crossfade");
         let manifest = dir.join("private/audio/audio_manifest.json");
-        let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        let mut m: serde_json::Value = serde_json::from_slice(&skate_fs::read(&manifest).unwrap()).unwrap();
         m["zones"]["00000000000000CD"] = serde_json::json!({"name": "street", "bed": "bed"});
-        std::fs::write(&manifest, m.to_string()).unwrap();
-        std::fs::write(mods.join("audio/f0.wav"), test_wav(4800, 48000, 11)).unwrap();
-        std::fs::write(mods.join("audio/f1.wav"), test_wav(4800, 48000, 22)).unwrap();
+        skate_fs::write(&manifest, m.to_string()).unwrap();
+        skate_fs::write(mods.join("audio/f0.wav"), test_wav(4800, 48000, 11)).unwrap();
+        skate_fs::write(mods.join("audio/f1.wav"), test_wav(4800, 48000, 22)).unwrap();
         let o: skate_mods::audio_content::AudioOverlay = serde_json::from_value(serde_json::json!({"version": 1,
             "add": {
                 "banks": {"MOD_fade": {"samples": ["audio/f0.wav", "audio/f1.wav"], "group": "world"}},
@@ -296,7 +296,7 @@ mod tests {
         world.spawn((GlobalTransform::default(), super::super::GameAudioListener));
         // One persistent ambience resource for the whole walk.
         let system = world.register_system(update);
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let step = |world: &mut World, x: f32, t: f32| {
             world.resource_mut::<super::super::skate_events::Cues>().riding.board = Vec3::new(x, 0.0, 0.0);
             world.resource_mut::<Time<Real>>().update_with_instant(start + std::time::Duration::from_secs_f32(t));
@@ -315,7 +315,7 @@ mod tests {
             step(&mut world, 10.0, 1.7 + i as f32 * 0.1);
         }
         assert!(!world.resource::<Voices>().sounds(&f0) && !world.resource::<Voices>().sounds(&f1), "stopped when the fade-in ended");
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     #[test]

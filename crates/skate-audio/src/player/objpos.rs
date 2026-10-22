@@ -135,7 +135,7 @@ mod tests {
     #[test]
     #[ignore = "needs the private install data"]
     fn rates_are_signed_by_closing_and_flag_their_sign_flips() {
-        let bytes = match std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb")) {
+        let bytes = match skate_fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb")) {
             Ok(b) => b,
             Err(_) => panic!("missing private data: no MixMap"),
         };

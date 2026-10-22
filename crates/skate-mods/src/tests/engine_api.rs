@@ -1,12 +1,13 @@
 use serde_json::json;
 use crate::{vm::Vm, Command, Manifest};
-use std::{collections::BTreeMap, time::{SystemTime,UNIX_EPOCH}};
+use std::{collections::BTreeMap};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn public_engine_wrappers_emit_valid_commands_and_read_scoped_observations() {
     let root=std::env::temp_dir().join(format!("skate-engine-api-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("main.lua"),r#"
+    skate_fs::create_dir_all(&root).unwrap();
+    skate_fs::write(root.join("main.lua"),r#"
       return {on_load=function()
         assert(sdk.player.skater(42).name == 'Rider')
         assert(sdk.player.read().landing_seq == 8)
@@ -45,7 +46,7 @@ fn public_engine_wrappers_emit_valid_commands_and_read_scoped_observations() {
     assert!(matches!(&commands[9],Command::GraphicsMeshBuffer{options,..} if options.capture.as_deref()==Some("view")));
     assert!(matches!(&commands[11],Command::GraphicsMesh{opacity,..} if *opacity==0.25));
     drop(vm);
-    std::fs::remove_dir_all(&root).unwrap();
+    skate_fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

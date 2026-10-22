@@ -80,7 +80,7 @@ fn user_models(settings: &ControllerSettings, path: &std::path::Path) -> Vec<con
 fn start_controllers(config: Res<crate::config::Config>) {
     let root = &config.asset_root;
     let path = root.parent().unwrap_or(root).join("settings/controller.json");
-    match std::fs::read(&path) {
+    match skate_fs::read(&path) {
         Ok(bytes) => match serde_json::from_slice::<ControllerSettings>(&bytes) {
             Ok(settings) => {
                 let mut masks = [0u16; 4];

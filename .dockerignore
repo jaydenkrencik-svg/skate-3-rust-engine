@@ -1,0 +1,5 @@
+target/
+data/
+web/dist/
+assets/private/
+maps/private/

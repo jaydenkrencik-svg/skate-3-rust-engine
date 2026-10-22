@@ -355,12 +355,12 @@ mod tests {
 
     fn package(dir: &Path, id: &str, overlay: Option<serde_json::Value>) -> PathBuf {
         let root = dir.join(id);
-        std::fs::create_dir_all(root.join("audio")).unwrap();
-        std::fs::write(root.join("audio/a.wav"), super::super::library::tests::test_wav(100, 48000, 9)).unwrap();
+        skate_fs::create_dir_all(root.join("audio")).unwrap();
+        skate_fs::write(root.join("audio/a.wav"), super::super::library::tests::test_wav(100, 48000, 9)).unwrap();
         match overlay {
-            Some(o) => std::fs::write(root.join("audio.json"), o.to_string()).unwrap(),
+            Some(o) => skate_fs::write(root.join("audio.json"), o.to_string()).unwrap(),
             None => {
-                let _ = std::fs::remove_file(root.join("audio.json"));
+                let _ = skate_fs::remove_file(root.join("audio.json"));
             }
         }
         root
@@ -372,7 +372,7 @@ mod tests {
     #[test]
     fn overlays_follow_the_running_mods() {
         let dir = std::env::temp_dir().join(format!("skate-audio-content-sync-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
         let a = package(&dir, "dev.a", Some(serde_json::json!({"version": 1, "replace": {"samples": {"x": {"0": "audio/a.wav"}}}})));
         let b = package(&dir, "dev.b", None);
         let mut c = AudioContent::default();
@@ -381,7 +381,7 @@ mod tests {
         c.pending = false;
         // Unchanged: nothing is read (even a now-broken file is not noticed until the package
         // fingerprint changes, as the manager reloads it then).
-        std::fs::write(a.join("audio.json"), "{broken").unwrap();
+        skate_fs::write(a.join("audio.json"), "{broken").unwrap();
         c.sync([("dev.a", a.as_path(), 1), ("dev.b", b.as_path(), 1)].into_iter());
         assert!(!c.pending && c.overlays.contains_key("dev.a"));
         // Changed and broken: the overlay goes, the error is kept for the menu.
@@ -404,7 +404,7 @@ mod tests {
         assert!(!c.pending && c.overlays.contains_key("dev.a"), "an empty overlay: registered, no restart");
         c.sync(std::iter::empty());
         assert!(!c.pending && c.overlays.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     fn config(root: &Path) -> crate::config::Config {
@@ -474,13 +474,13 @@ mod tests {
             panic!("missing private data: no audio install");
         }
         let dir = std::env::temp_dir().join(format!("skate-audio-resident-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(dir.join("audio")).unwrap();
         use skate_audio::eval::synthetic;
         let abk = synthetic::bank(&[synthetic::player_module(2)], &[], &[(1000, false)]).data;
-        std::fs::write(dir.join("audio/k.abk"), &abk).unwrap();
-        std::fs::write(dir.join("audio/a.wav"), super::super::library::tests::test_wav(1000, 48000, 100)).unwrap();
-        std::fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "add": {"banks": {
+        skate_fs::write(dir.join("audio/k.abk"), &abk).unwrap();
+        skate_fs::write(dir.join("audio/a.wav"), super::super::library::tests::test_wav(1000, 48000, 100)).unwrap();
+        skate_fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "add": {"banks": {
             "MOD_keep": {"abk": "audio/k.abk", "samples": ["audio/a.wav"], "preload": true, "group": "player"},
             "MOD_map": {"abk": "audio/k.abk", "samples": ["audio/a.wav"]}}}}).to_string()).unwrap();
         let mut world = World::new();
@@ -509,7 +509,7 @@ mod tests {
         assert!(!native.bank_loaded("MOD_map"), "a map bank goes");
         assert!(native.bank_loaded("emitter_utility"));
         drop(native);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     fn same(a: &[f32], b: &[f32]) -> bool {
@@ -565,13 +565,13 @@ mod tests {
         assert!(same(&restarted, &fresh), "restart = fresh start from that point");
         // A mod replacing the bank's samples (a tone of another rate and length) is heard...
         let dir = std::env::temp_dir().join(format!("skate-audio-restart-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(dir.join("audio")).unwrap();
         let samples = world.resource::<Library>().bank_len(&bank);
         let tone: Vec<u8> = super::super::library::tests::test_wav(22050, 22050, 6000);
-        std::fs::write(dir.join("audio/tone.wav"), &tone).unwrap();
+        skate_fs::write(dir.join("audio/tone.wav"), &tone).unwrap();
         let overlay = serde_json::json!({"version": 1, "replace": {"banks": {bank.clone(): {"samples": vec!["audio/tone.wav"; samples]}}}});
-        std::fs::write(dir.join("audio.json"), overlay.to_string()).unwrap();
+        skate_fs::write(dir.join("audio.json"), overlay.to_string()).unwrap();
         world.resource_mut::<AudioContent>().sync([("dev.restart", dir.as_path(), 1)].into_iter());
         restart(&mut world);
         assert!(world.resource::<AudioContent>().report.applied == ["dev.restart"], "{:?}", world.resource::<AudioContent>().report);
@@ -591,7 +591,7 @@ mod tests {
             scenario(&mut w, &bank, patch)
         };
         assert!(same(&restored, &fresh), "removed mod = retail");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     /// L4 (data-gated): a mod's Csis project brings a class and a global; its preloaded bank binds
@@ -611,15 +611,15 @@ mod tests {
         let mut world = game_world(root);
         let retail_emitter = world.resource::<Native>().shared.lock().unwrap().eval.class_id("c_emitter");
         let dir = std::env::temp_dir().join(format!("skate-audio-csi-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(dir.join("audio")).unwrap();
         let sym = |name: &str, name_id: u16, default: i32| skate_audio::formats::csi::Symbol { name: name.into(), name_id, default };
         let project = |class: &str| skate_audio::formats::Project { name: "mod.csi".into(), id: synthetic::PROJECT, tables: [vec![], vec![sym(class, 1, 0)], vec![sym("g_dev_mod", 2, 41)]] };
-        std::fs::write(dir.join("audio/mod.csi"), project("c_dev_mod").to_bytes()).unwrap();
+        skate_fs::write(dir.join("audio/mod.csi"), project("c_dev_mod").to_bytes()).unwrap();
         let abk = synthetic::bank(&[synthetic::player_module(2)], &[synthetic::Ex { module: 0, kind: 1, name_id: 1, name: "c_dev_mod", at: None }], &[(4800, false)]).data;
-        std::fs::write(dir.join("audio/mod.abk"), &abk).unwrap();
-        std::fs::write(dir.join("audio/a.wav"), super::super::library::tests::test_wav(4800, 48000, 9000)).unwrap();
-        std::fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "add": {
+        skate_fs::write(dir.join("audio/mod.abk"), &abk).unwrap();
+        skate_fs::write(dir.join("audio/a.wav"), super::super::library::tests::test_wav(4800, 48000, 9000)).unwrap();
+        skate_fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "add": {
             "projects": ["audio/mod.csi"],
             "banks": {"MOD_csi": {"abk": "audio/mod.abk", "samples": ["audio/a.wav"], "preload": true, "group": "world"}}}}).to_string()).unwrap();
         world.resource_mut::<AudioContent>().sync([("dev.csi", dir.as_path(), 1)].into_iter());
@@ -652,18 +652,18 @@ mod tests {
             assert_eq!(rt.eval.class_id("c_emitter"), retail_emitter);
         }
         // A project that reuses a retail class name is left out.
-        std::fs::write(dir.join("audio/mod.csi"), project("c_emitter").to_bytes()).unwrap();
+        skate_fs::write(dir.join("audio/mod.csi"), project("c_emitter").to_bytes()).unwrap();
         world.resource_mut::<AudioContent>().sync([("dev.csi", dir.as_path(), 2)].into_iter());
         frame(&mut world);
         assert!(world.resource::<AudioContent>().report.rejected.iter().any(|m| m.owner == "dev.csi" && m.text.contains("c_emitter")), "{:?}", world.resource::<AudioContent>().report);
         // A restart with the mod: its project after the install's.
-        std::fs::write(dir.join("audio/mod.csi"), project("c_dev_mod").to_bytes()).unwrap();
+        skate_fs::write(dir.join("audio/mod.csi"), project("c_dev_mod").to_bytes()).unwrap();
         world.resource_mut::<AudioContent>().sync([("dev.csi", dir.as_path(), 3)].into_iter());
         restart(&mut world);
         let n = world.resource::<Native>();
         assert_eq!(n.mod_projects.len(), 1);
         assert!(n.shared.lock().unwrap().eval.class_id("c_dev_mod").is_some());
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 
     pub(crate) fn render(world: &World, blocks: usize) -> Vec<f32> {
@@ -724,11 +724,11 @@ mod tests {
             (class, rt.eval.registry.classes[class].constructors.clone(), rt.eval.instances().into_iter().filter(|i| i.1 == utility).collect::<Vec<_>>())
         };
         let dir = std::env::temp_dir().join(format!("skate-audio-swap-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(dir.join("audio")).unwrap();
         let samples = a.resource::<Library>().bank_len(&bank);
-        std::fs::write(dir.join("audio/tone.wav"), super::super::library::tests::test_wav(22050, 22050, 6000)).unwrap();
-        std::fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "replace": {"banks": {bank.clone(): {"samples": vec!["audio/tone.wav"; samples]}}}}).to_string()).unwrap();
+        skate_fs::write(dir.join("audio/tone.wav"), super::super::library::tests::test_wav(22050, 22050, 6000)).unwrap();
+        skate_fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "replace": {"banks": {bank.clone(): {"samples": vec!["audio/tone.wav"; samples]}}}}).to_string()).unwrap();
         a.resource_mut::<AudioContent>().sync([("dev.swap", dir.as_path(), 1)].into_iter());
         frame(&mut a);
         {
@@ -757,7 +757,7 @@ mod tests {
             rt.eval.bank(id).unwrap().samples[0].1
         };
         let before = header(&a);
-        std::fs::write(dir.join("audio/tone.wav"), super::super::library::tests::test_wav(11025, 22050, 3000)).unwrap();
+        skate_fs::write(dir.join("audio/tone.wav"), super::super::library::tests::test_wav(11025, 22050, 3000)).unwrap();
         a.resource_mut::<AudioContent>().sync([("dev.swap", dir.as_path(), 2)].into_iter());
         frame(&mut a);
         assert_eq!((a.resource::<AudioContent>().restarts, a.resource::<AudioContent>().swaps), (0, 2));
@@ -770,13 +770,13 @@ mod tests {
         assert!(render(&a, 300).iter().any(|s| *s != 0.0), "still sounding");
         // A MixMap replacement restarts (the fallback).
         let mxb = a.resource::<Library>().aems().mixmap.clone().expect("a MixMap");
-        std::fs::copy(a.resource::<Library>().path(&mxb), dir.join("audio/mix.mxb")).unwrap();
-        std::fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "replace": {"mixmap": "audio/mix.mxb"}}).to_string()).unwrap();
+        skate_fs::copy(a.resource::<Library>().path(&mxb), dir.join("audio/mix.mxb")).unwrap();
+        skate_fs::write(dir.join("audio.json"), serde_json::json!({"version": 1, "replace": {"mixmap": "audio/mix.mxb"}}).to_string()).unwrap();
         a.resource_mut::<AudioContent>().sync([("dev.swap", dir.as_path(), 3)].into_iter());
         frame(&mut a);
         let c = a.resource::<AudioContent>();
         assert_eq!((c.restarts, c.swaps), (1, 3));
         assert!(c.last_change.as_deref().is_some_and(|l| l.starts_with("restart: the MixMap file changed")), "{:?}", c.last_change);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = skate_fs::remove_dir_all(&dir);
     }
 }

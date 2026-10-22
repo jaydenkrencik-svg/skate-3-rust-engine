@@ -37,7 +37,7 @@ impl Config {
         };
         let mut difficulty_override = None;
         let mut explicit_map = false;
-        let mut args = std::env::args_os().skip(1);
+        let mut args = crate::args().into_iter();
         while let Some(arg) = args.next() {
             match arg.to_str() {
                 Some("--trace" | "--trace-seconds" | "--trace-delay" | "--trace-min-us") => { args.next().ok_or("Trace option requires a value")?; }
@@ -71,7 +71,7 @@ impl Config {
                 Some("--map") => {
                     let path = PathBuf::from(args.next().ok_or("--map requires a .skate file")?);
                     config.map = Some(skate_data::skate_map::SkateMap::load(&path)?);
-                    config.map_path = Some(path.canonicalize().map_err(|e| e.to_string())?);
+                    config.map_path = Some(skate_fs::canonicalize(&path).map_err(|e| e.to_string())?);
                     explicit_map = true;
                 }
                 Some("--test-world") => { explicit_map = true; config.map = None; config.map_path = None; }
@@ -99,9 +99,7 @@ impl Config {
                 }
             }
         }
-        config.asset_root = config
-            .asset_root
-            .canonicalize()
+        config.asset_root = skate_fs::canonicalize(&config.asset_root)
             .map_err(|e| format!("Asset root {}: {e}", config.asset_root.display()))?;
         config.difficulty = match difficulty_override {
             Some(mode) => mode,
@@ -110,7 +108,7 @@ impl Config {
         if !explicit_map {
             if let Some(path) = crate::map_library::default_map(&config.asset_root)? {
                 config.map = Some(skate_data::skate_map::SkateMap::load(&path)?);
-                config.map_path = Some(path.canonicalize().map_err(|e| e.to_string())?);
+                config.map_path = Some(skate_fs::canonicalize(&path).map_err(|e| e.to_string())?);
             }
         }
         if config.validate_maps && (config.map.is_some() || config.check_assets) {
@@ -135,7 +133,7 @@ impl Config {
                     .join(&path);
             }
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                skate_fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
         }
         Ok(config)
@@ -146,7 +144,7 @@ impl Config {
 pub(crate) fn map_fingerprint(path: Option<&std::path::Path>) -> Result<u64, String> {
     Ok(if let Some(path)=path {
             use std::io::Read;
-            let mut file=std::fs::File::open(path).map_err(|e|e.to_string())?;
+            let mut file=skate_fs::File::open(path).map_err(|e|e.to_string())?;
             let mut hash=0xcbf29ce484222325u64;
             let mut buffer=[0;65536];
             loop {let n=file.read(&mut buffer).map_err(|e|e.to_string())?;if n==0{break;}for b in &buffer[..n]{hash=(hash^u64::from(*b)).wrapping_mul(0x100000001b3);}}

@@ -948,7 +948,7 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()
         });
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = skate_fs::read_dir(&dir) else {
             eprintln!("skipped: no decoded menu movies in {dir}");
             return;
         };
@@ -961,7 +961,7 @@ mod tests {
         let mut movies = 0;
         for entry in entries.flatten() {
             let json: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(entry.path()).unwrap()).unwrap();
+                serde_json::from_slice(&skate_fs::read(entry.path()).unwrap()).unwrap();
             let streams: BTreeMap<String, Vec<Instruction>> =
                 serde_json::from_value(json["actions"].clone()).unwrap();
             movies += 1;

@@ -21,8 +21,9 @@ use std::{
         Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Instant,
+    
 };
+use web_time::Instant;
 
 /// Set once by `init()` so `install()` can reach the same capture state without
 /// threading it through `main`'s return type.
@@ -307,7 +308,7 @@ mod tests {
     #[test]
     fn trace_has_complete_spans_dynamic_labels_and_escaped_metadata() {
         let path = std::env::temp_dir().join(format!("skate-trace-{}-{}.json", std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_nanos()));
         let mut file = BufWriter::new(File::create(&path).unwrap());
         file.write_all(b"[\n").unwrap();
         let capture: &'static Capture = Box::leak(Box::new(Capture {
@@ -326,8 +327,8 @@ mod tests {
         });
         capture.finish();
         capture.finish();
-        let events: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        std::fs::remove_file(&path).unwrap();
+        let events: serde_json::Value = serde_json::from_slice(&skate_fs::read(&path).unwrap()).unwrap();
+        skate_fs::remove_file(&path).unwrap();
         let rows = events.as_array().unwrap();
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0]["args"]["value"], metadata);

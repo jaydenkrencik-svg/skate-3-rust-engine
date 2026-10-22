@@ -3,7 +3,7 @@ use skate_core::input::gesture::Pattern;
 use std::path::Path;
 
 pub fn load(path: &Path) -> Result<Vec<Pattern>, String> {
-    parse(&std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?)
+    parse(&skate_fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?)
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 

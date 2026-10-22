@@ -415,8 +415,8 @@ fn capture(skater: &SkaterRuntime, name: &str) {
     }
     if let Some(path) = std::env::var_os("SKATE_CLIMB_CAPTURE") {
         let path = std::path::PathBuf::from(path);
-        std::fs::create_dir_all(&path).unwrap();
-        std::fs::write(
+        skate_fs::create_dir_all(&path).unwrap();
+        skate_fs::write(
             path.join(format!("{name}.json")),
             serde_json::to_vec(&serde_json::json!({
                 "root":skater.animated_skeleton.roots.animation_to_world,

@@ -157,7 +157,7 @@ pub(crate) fn retail_table(c: &skate_data::collections::Collections) -> HashMap<
 fn retail(asset_root: &Path) -> Option<&'static HashMap<String, RetailMap>> {
     static TABLE: OnceLock<Option<HashMap<String, RetailMap>>> = OnceLock::new();
     TABLE.get_or_init(|| {
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         match skate_data::collections::Collections::load(asset_root) {
             Ok(c) => {
                 let table = retail_table(&c);
@@ -178,7 +178,7 @@ fn own_definition(map: &crate::map_transition::CurrentMap) -> Option<(MapJson, &
         (tag.to_vec(), "tag", "AUDO extension".to_owned())
     } else {
         let path = map.path.as_deref()?.with_extension("audio.json");
-        let bytes = std::fs::read(&path).ok()?;
+        let bytes = skate_fs::read(&path).ok()?;
         (bytes, "sidecar", path.display().to_string())
     };
     let def = match skate_mods::audio_content::MapAudioDef::parse(&bytes, &at) {
@@ -341,7 +341,7 @@ pub(crate) mod tests {
         assert_eq!(records, [(1, 0), (1, 1)], "the extra records are one more file after the .ems files");
         let none = build("Nowhere", None, &library, Some(&table));
         assert!(none.ems.is_empty() && none.sources == ["none"]);
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 
     /// A custom map's own definition: a `<map>.audio.json` sidecar next to the `.skate`, or its
@@ -349,11 +349,11 @@ pub(crate) mod tests {
     #[test]
     fn a_custom_map_reads_its_sidecar_or_its_tag() {
         let dir = std::env::temp_dir().join(format!("skate-map-audio-sidecar-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let _ = skate_fs::remove_dir_all(&dir);
+        skate_fs::create_dir_all(&dir).unwrap();
         let mut map = crate::map_transition::CurrentMap { path: Some(dir.join("MyMap.skate")), name: "My map".into(), spawn: [0.0; 3], heading: 0.0, generation: 1, audio_tag: None };
         assert!(own_definition(&map).is_none(), "no sidecar, no tag");
-        std::fs::write(dir.join("MyMap.audio.json"), r#"{"district": "DownTown", "emitters": [{"position": [0, 0, 0], "extent": [3, 3, 3], "kind": 5, "reverb": "BEEFC8E3DE04FBAE"}]}"#).unwrap();
+        skate_fs::write(dir.join("MyMap.audio.json"), r#"{"district": "DownTown", "emitters": [{"position": [0, 0, 0], "extent": [3, 3, 3], "kind": 5, "reverb": "BEEFC8E3DE04FBAE"}]}"#).unwrap();
         let (def, source) = own_definition(&map).unwrap();
         assert_eq!((source, def.district.as_deref(), def.emitters.len()), ("sidecar", Some("DownTown"), 1));
         map.audio_tag = Some(std::sync::Arc::from(&br#"{"district": "University"}"#[..]));
@@ -368,8 +368,8 @@ pub(crate) mod tests {
         let built = build("MyMap", own_definition(&map), &library, None);
         let zones: Vec<_> = built.records(&library).filter(|(_, r)| r.kind == 5).collect();
         assert_eq!(zones.len(), 1);
-        let _ = std::fs::remove_dir_all(dir);
-        let _ = std::fs::remove_dir_all(fixture);
+        let _ = skate_fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(fixture);
     }
 
     /// A mod's `maps.<stem>` applies over retail and the map's own definition.
@@ -384,6 +384,6 @@ pub(crate) mod tests {
         assert_eq!(built.crossfade_bank.as_deref(), Some("MOD_fade"));
         assert_eq!(built.emitters.len(), 2);
         assert_eq!(built.sources, ["tag", "mod"]);
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = skate_fs::remove_dir_all(dir);
     }
 }

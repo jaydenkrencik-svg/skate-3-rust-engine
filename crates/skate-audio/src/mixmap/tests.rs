@@ -88,7 +88,7 @@ fn disc_mxb() -> Option<Vec<u8>> {
     let disc = std::env::var_os("SKATE3_DISC")
         .filter(|v| !v.is_empty())
         .map(|d| std::path::PathBuf::from(d).join("data/audio/MixMapSK8.mxb"));
-    std::iter::once(install).chain(disc).find_map(|p| std::fs::read(p).ok())
+    std::iter::once(install).chain(disc).find_map(|p| skate_fs::read(p).ok())
 }
 
 /// The retail file instantiates exactly the spec's census (§2.4).

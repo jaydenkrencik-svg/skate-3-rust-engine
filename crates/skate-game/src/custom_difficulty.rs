@@ -72,7 +72,7 @@ impl Tuning {
     pub fn load(root: &Path, data: &Collections) -> Result<Self,String> {
         let mut result=Self::defaults(data)?;
         let path=crate::difficulty::Difficulty::path(root).with_file_name("custom-difficulty.json");
-        match std::fs::read(&path) {
+        match skate_fs::read(&path) {
             Ok(bytes)=> {let saved:Self=serde_json::from_slice(&bytes).map_err(|e|format!("Custom difficulty: {e}"))?;
                 saved.validate()?; result.values.extend(saved.values);},
             Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{},
@@ -92,10 +92,10 @@ impl Tuning {
     pub fn save(&self,root:&Path)->Result<(),String> {
         self.validate()?;
         let path=crate::difficulty::Difficulty::path(root).with_file_name("custom-difficulty.json");
-        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e|e.to_string())?;
+        skate_fs::create_dir_all(path.parent().unwrap()).map_err(|e|e.to_string())?;
         let temp=path.with_extension("json.tmp");
-        std::fs::write(&temp,serde_json::to_vec_pretty(self).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
-        std::fs::rename(temp,path).map_err(|e|e.to_string())
+        skate_fs::write(&temp,serde_json::to_vec_pretty(self).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        skate_fs::rename(temp,path).map_err(|e|e.to_string())
     }
     pub fn overlay(&self,data:&mut Collections)->Result<(),String> {
         self.validate()?;

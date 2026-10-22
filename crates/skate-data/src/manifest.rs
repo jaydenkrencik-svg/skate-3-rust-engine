@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use skate_fs as fs;
 use std::{
-    fmt, fs,
+    fmt,
     path::{Component, Path, PathBuf},
 };
 
@@ -34,7 +35,7 @@ impl GameAssets {
             ("MotionGraph", manifest.motion_graph.as_str()),
         ] {
             let path = root.join(relative);
-            if !path.is_file() {
+            if !skate_fs::is_file(&path) {
                 return Err(AssetError(format!("{kind} missing: {}", path.display())));
             }
         }

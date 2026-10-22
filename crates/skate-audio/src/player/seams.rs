@@ -531,7 +531,7 @@ mod tests {
 
     fn mixmap() -> Option<MixMap> {
         let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
-        MixMap::from_bytes(&std::fs::read(path).ok()?).ok()
+        MixMap::from_bytes(&skate_fs::read(path).ok()?).ok()
     }
 
     #[test]

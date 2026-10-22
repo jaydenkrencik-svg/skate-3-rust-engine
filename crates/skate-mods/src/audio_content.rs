@@ -439,7 +439,7 @@ impl SpeechClips {
             if !valid_content_path(index, &["json"]) {
                 continue;
             }
-            let Ok(bytes) = std::fs::read(audio_root.join(index)) else { continue };
+            let Ok(bytes) = skate_fs::read(audio_root.join(index)) else { continue };
             let Ok(index) = serde_json::from_slice::<Index>(&bytes) else { continue };
             let clips = index.clips.into_iter().map(|c| (c.name.strip_suffix(".dat").unwrap_or(&c.name).to_owned(), c.takes.len())).collect();
             archives.insert(archive.clone(), clips);
@@ -969,7 +969,7 @@ pub fn project_clash(taken: &std::collections::BTreeSet<(u8, String)>, symbols: 
 /// Read, parse and check a mod's `audio.json` and every file it names. `Ok(None)`: the mod has
 /// no overlay.
 pub fn load(root: &Path) -> Result<Option<Loaded>, String> {
-    if !root.join(FILE).is_file() {
+    if !skate_fs::is_file(&root.join(FILE)) {
         return Ok(None);
     }
     let bytes = read_bounded(root, FILE, MAX_JSON_BYTES)?;
@@ -1017,8 +1017,8 @@ mod tests {
 
     fn dir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("skate-audio-content-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(d.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&d);
+        skate_fs::create_dir_all(d.join("audio")).unwrap();
         d
     }
 
@@ -1111,8 +1111,8 @@ mod tests {
     #[test]
     fn load_checks_every_file_inside_the_mod() {
         let d = dir("load");
-        std::fs::write(d.join("audio/pop.wav"), wav(4800, 48000, 1)).unwrap();
-        std::fs::write(d.join(FILE), json!({"version": 1, "replace": {"samples": {"Skate_Collisions": {"3": "audio/pop.wav"}}}}).to_string()).unwrap();
+        skate_fs::write(d.join("audio/pop.wav"), wav(4800, 48000, 1)).unwrap();
+        skate_fs::write(d.join(FILE), json!({"version": 1, "replace": {"samples": {"Skate_Collisions": {"3": "audio/pop.wav"}}}}).to_string()).unwrap();
         let loaded = load(&d).unwrap().unwrap();
         assert_eq!(loaded.pcm_bytes, 9600);
         // A missing file, a corrupt WAV, a non-bank `.abk` and a path escaping the root fail.
@@ -1122,21 +1122,21 @@ mod tests {
             (json!({"version": 1, "add": {"banks": {"b": {"abk": "audio/bad.abk"}}}}), "bank"),
             (json!({"version": 1, "replace": {"mixmap": "audio/bad.mxb"}}), "mixmap"),
         ] {
-            std::fs::write(d.join("audio/bad.wav"), b"RIFF0000WAVEjunk").unwrap();
-            std::fs::write(d.join("audio/bad.abk"), b"not a bank").unwrap();
-            std::fs::write(d.join("audio/bad.mxb"), b"not a mixmap").unwrap();
-            std::fs::write(d.join(FILE), overlay.to_string()).unwrap();
+            skate_fs::write(d.join("audio/bad.wav"), b"RIFF0000WAVEjunk").unwrap();
+            skate_fs::write(d.join("audio/bad.abk"), b"not a bank").unwrap();
+            skate_fs::write(d.join("audio/bad.mxb"), b"not a mixmap").unwrap();
+            skate_fs::write(d.join(FILE), overlay.to_string()).unwrap();
             assert!(load(&d).is_err(), "{why}");
         }
         // A bed may be longer than a sample.
-        std::fs::write(d.join("audio/bed.wav"), wav(48000 * 40, 48000, 1)).unwrap();
-        std::fs::write(d.join(FILE), json!({"version": 1, "replace": {"ambience": {"04_dt_main": "audio/bed.wav"}}}).to_string()).unwrap();
+        skate_fs::write(d.join("audio/bed.wav"), wav(48000 * 40, 48000, 1)).unwrap();
+        skate_fs::write(d.join(FILE), json!({"version": 1, "replace": {"ambience": {"04_dt_main": "audio/bed.wav"}}}).to_string()).unwrap();
         assert!(load(&d).is_ok(), "a 40 s bed");
-        std::fs::write(d.join(FILE), json!({"version": 1, "replace": {"samples": {"b": {"0": "audio/bed.wav"}}}}).to_string()).unwrap();
+        skate_fs::write(d.join(FILE), json!({"version": 1, "replace": {"samples": {"b": {"0": "audio/bed.wav"}}}}).to_string()).unwrap();
         assert!(load(&d).is_err(), "a 40 s sample");
-        std::fs::remove_file(d.join(FILE)).unwrap();
+        skate_fs::remove_file(d.join(FILE)).unwrap();
         assert!(load(&d).unwrap().is_none(), "no overlay");
-        let _ = std::fs::remove_dir_all(d);
+        let _ = skate_fs::remove_dir_all(d);
     }
 
     /// The overlays the repo ships (the SDK example and the dev test mod) pass the deep check, and
@@ -1168,9 +1168,9 @@ mod tests {
     #[test]
     fn rules_in_audio_json_are_checked_and_carry_no_content() {
         let d = dir("rules");
-        std::fs::write(d.join("audio/pop.wav"), wav(4800, 48000, 1)).unwrap();
+        skate_fs::write(d.join("audio/pop.wav"), wav(4800, 48000, 1)).unwrap();
         let only = json!({"version": 1, "rules": {"my_pop": {"match": {"tag": "pop"}, "action": "replace", "play": {"path": "audio/pop.wav"}}}});
-        std::fs::write(d.join(FILE), only.to_string()).unwrap();
+        skate_fs::write(d.join(FILE), only.to_string()).unwrap();
         let loaded = load(&d).unwrap().unwrap();
         assert!(!loaded.overlay.has_content(), "rules only: no restart");
         assert_eq!(loaded.pcm_bytes, 9600, "the rule's WAV counts");
@@ -1183,13 +1183,13 @@ mod tests {
             json!({"version": 1, "rules": {"x": {"match": {}, "action": "mute"}}}),
             json!({"version": 1, "rules": {"bad key": {"match": {"tag": "pop"}, "action": "mute"}}}),
         ] {
-            std::fs::write(d.join(FILE), bad.to_string()).unwrap();
+            skate_fs::write(d.join(FILE), bad.to_string()).unwrap();
             assert!(load(&d).is_err(), "accepted {bad}");
         }
         let many: serde_json::Map<String, Value> = (0..33).map(|i| (format!("r{i}"), json!({"match": {"tag": "pop"}, "action": "mute"}))).collect();
         let o: AudioOverlay = serde_json::from_value(json!({"version": 1, "rules": many})).unwrap();
         assert!(o.validate().is_err(), "32 rules at most");
-        let _ = std::fs::remove_dir_all(&d);
+        let _ = skate_fs::remove_dir_all(&d);
     }
 
     /// Doc 16 L4: `add.projects` names `.csi` files, read through the Csis parser (a project without
@@ -1200,13 +1200,13 @@ mod tests {
     fn mod_csis_projects_are_checked_and_merged() {
         use skate_audio::formats::{Project, csi::Symbol};
         let d = std::env::temp_dir().join(format!("skate-audio-csi-check-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(d.join("audio")).unwrap();
+        let _ = skate_fs::remove_dir_all(&d);
+        skate_fs::create_dir_all(d.join("audio")).unwrap();
         let s = |name: &str| Symbol { name: name.into(), name_id: 1, default: 0 };
-        std::fs::write(d.join("audio/mod.csi"), Project { name: "m".into(), id: 7, tables: [vec![], vec![s("c_mod")], vec![s("g_mod")]] }.to_bytes()).unwrap();
-        std::fs::write(d.join("audio/empty.csi"), Project { name: "e".into(), id: 7, tables: Default::default() }.to_bytes()).unwrap();
-        std::fs::write(d.join("audio/bad.csi"), b"nope").unwrap();
-        let write = |o: serde_json::Value| std::fs::write(d.join(FILE), o.to_string()).unwrap();
+        skate_fs::write(d.join("audio/mod.csi"), Project { name: "m".into(), id: 7, tables: [vec![], vec![s("c_mod")], vec![s("g_mod")]] }.to_bytes()).unwrap();
+        skate_fs::write(d.join("audio/empty.csi"), Project { name: "e".into(), id: 7, tables: Default::default() }.to_bytes()).unwrap();
+        skate_fs::write(d.join("audio/bad.csi"), b"nope").unwrap();
+        let write = |o: serde_json::Value| skate_fs::write(d.join(FILE), o.to_string()).unwrap();
         write(json!({"version": 1, "add": {"projects": ["audio/mod.csi"]}}));
         let loaded = load(&d).unwrap().unwrap();
         assert!(loaded.overlay.has_content() && loaded.overlay.summary().contains(&"added Csis projects: 1".to_owned()));
@@ -1216,7 +1216,7 @@ mod tests {
         }
         write(json!({"version": 1, "add": {"projects": vec!["audio/mod.csi"; MAX_PROJECTS + 1]}}));
         assert!(load(&d).is_err(), "too many");
-        let symbols = project_symbols(&std::fs::read(d.join("audio/mod.csi")).unwrap(), "mod.csi").unwrap();
+        let symbols = project_symbols(&skate_fs::read(d.join("audio/mod.csi")).unwrap(), "mod.csi").unwrap();
         assert_eq!(symbols, [(1, "c_mod".to_owned()), (2, "g_mod".to_owned())]);
         let mut taken = std::collections::BTreeSet::from([(1u8, "c_emitter".to_owned())]);
         assert_eq!(project_clash(&taken, &symbols), None);
@@ -1227,6 +1227,6 @@ mod tests {
         let o: AudioOverlay = serde_json::from_value(json!({"version": 1, "add": {"projects": ["audio/mod.csi"]}})).unwrap();
         crate::audio_merge::merge(&mut m, &[crate::audio_merge::Source { id: "me", overlay: &o }]);
         assert_eq!(m["aems"]["projects"], json!(["aems/a.csi", "mod:me/audio/mod.csi"]));
-        let _ = std::fs::remove_dir_all(&d);
+        let _ = skate_fs::remove_dir_all(&d);
     }
 }

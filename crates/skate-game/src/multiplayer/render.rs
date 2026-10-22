@@ -587,7 +587,7 @@ mod online_owned_tests {
             .unwrap()
             .bone_names;
         let library: crate::customiser_parts::Library = serde_json::from_slice(
-            &std::fs::read(
+            &skate_fs::read(
                 crate::customiser_parts::asset_directory(&assets).join("library-v3.json"),
             )
             .unwrap(),
@@ -613,16 +613,16 @@ mod online_owned_tests {
         app.finish();
         app.cleanup();
         if let Ok(path) = std::env::var("SKATE_ONLINE_TEST_GLB") {
-            let bytes = std::fs::read(path).unwrap();
+            let bytes = skate_fs::read(path).unwrap();
             super::super::appearance::validate_glb(&bytes).unwrap();
             let cache = super::super::appearance::cache_directory();
-            std::fs::create_dir_all(cache).unwrap();
+            skate_fs::create_dir_all(cache).unwrap();
             let mut payload = vec![0];
             payload.extend(bytes);
             let received = super::super::appearance_transfer::transfer_over_udp(payload);
             assert_eq!(received[0], 0);
             super::super::appearance::validate_glb(&received[1..]).unwrap();
-            std::fs::write(cache.join("received-test.glb"), &received[1..]).unwrap();
+            skate_fs::write(cache.join("received-test.glb"), &received[1..]).unwrap();
             let handle = app
                 .world()
                 .resource::<AssetServer>()
@@ -672,7 +672,7 @@ mod online_owned_tests {
             }
             app.world_mut().entity_mut(root).despawn();
             app.update();
-            std::fs::remove_file(cache.join("received-test.glb")).unwrap();
+            skate_fs::remove_file(cache.join("received-test.glb")).unwrap();
         }
         for gender in ["male", "female"] {
             let profile = parts.resolve(&parts.library.defaults[gender]).unwrap();

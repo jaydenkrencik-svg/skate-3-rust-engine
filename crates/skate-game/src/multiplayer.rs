@@ -18,8 +18,9 @@ use skate_net::{
 use std::{
     collections::{BTreeMap, VecDeque},
     net::SocketAddr,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 pub(crate) fn unique() -> u64 {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -28,7 +29,7 @@ pub(crate) fn unique() -> u64 {
     skate_net::hash(
         &[
             nanos.to_le_bytes().as_slice(),
-            std::process::id().to_le_bytes().as_slice(),
+            skate_fs::process_id().to_le_bytes().as_slice(),
         ]
         .concat(),
     )
@@ -729,7 +730,7 @@ fn player_name_path(asset_root: &std::path::Path) -> std::path::PathBuf {
 }
 
 fn load_player_name(path: &std::path::Path) -> String {
-    let Ok(bytes) = std::fs::read(path) else {
+    let Ok(bytes) = skate_fs::read(path) else {
         return "Player".into();
     };
     let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
@@ -738,9 +739,9 @@ fn load_player_name(path: &std::path::Path) -> String {
 
 fn persist_player_name(path: &std::path::Path, name: &str) {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = skate_fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(
+    let _ = skate_fs::write(
         path,
         serde_json::to_vec_pretty(&serde_json::json!({ "name": name })).unwrap_or_default(),
     );

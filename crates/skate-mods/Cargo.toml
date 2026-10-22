@@ -5,14 +5,18 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+skate-fs.workspace = true
+web-time.workspace = true
 blake3 = "1.8.2"
-mlua = { version = "=0.12.1", features = ["lua54", "vendored", "serde", "send"] }
 serde.workspace = true
 serde_json.workspace = true
 skate-dynamics = { path = "../skate-dynamics" }
 skate-audio = { path = "../skate-audio" }
 gltf = { version = "=1.4.1", default-features = true }
 zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "=0.12.1", features = ["lua54", "vendored", "serde", "send"] }
 
 [[example]]
 name = "check_mod"

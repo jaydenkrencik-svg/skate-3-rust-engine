@@ -801,7 +801,7 @@ mod tests {
         };
         let mut lines = Vec::new();
         for run in ["bailrun_t2_20261003_100040", "bailrun_ok_20261003_100226", "bailrun_ok2_20261003_100514", "bailrun_ok3_20261003_101354"] {
-            let Ok(text) = std::fs::read_to_string(root.join(run).join("trace.tsv")) else {
+            let Ok(text) = skate_fs::read_to_string(root.join(run).join("trace.tsv")) else {
                 panic!("missing private data: no recomp bail trace {run}");
             };
             for l in text.lines().filter(|l| l.starts_with("BAILREG\t")) {

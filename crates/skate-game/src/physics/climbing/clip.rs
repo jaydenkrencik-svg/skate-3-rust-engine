@@ -25,7 +25,7 @@ pub(super) struct Clips {
 impl Clips {
     pub fn load(root: &Path) -> Result<Option<Self>, String> {
         let path = root.join("private/custom/climbing.json");
-        let bytes = match std::fs::read(&path) {
+        let bytes = match skate_fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(format!("{}: {e}", path.display())),

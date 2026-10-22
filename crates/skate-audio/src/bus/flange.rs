@@ -180,7 +180,7 @@ mod tests {
     #[ignore = "needs the private install data"]
     fn the_reverb_owner_gives_the_retail_free_skate_levels() {
         use crate::mixmap::{MixMap, keys};
-        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
+        let bytes = skate_fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/private/audio/aems/MixMapSK8.mxb"));
         let Ok(bytes) = bytes else { panic!("missing private data: no MixMap") };
         let levels = |in5: i32| {
             let mut m = MixMap::from_bytes(&bytes).unwrap();

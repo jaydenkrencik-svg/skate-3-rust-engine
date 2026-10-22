@@ -161,7 +161,8 @@ mod tests {
     #[test]
     #[ignore = "manual timing probe, no machine-dependent pass threshold"]
     fn visual_contact_timing_probe() {
-        use std::{hint::black_box, time::Instant};
+        use std::{hint::black_box};
+        use web_time::Instant;
         let points: Vec<_> = [-0.25, 0.25]
             .into_iter()
             .flat_map(|x| {

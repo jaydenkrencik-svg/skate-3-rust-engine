@@ -60,8 +60,9 @@ impl Exchange {
 pub(super) fn transfer_over_udp(model: Vec<u8>) -> Vec<u8> {
     use std::{
         net::UdpSocket,
-        time::{Duration, Instant},
+        time::Duration,
     };
+    use web_time::Instant;
     let sockets: Vec<_> = (0..3)
         .map(|_| {
             let socket = UdpSocket::bind("127.0.0.1:0").unwrap();

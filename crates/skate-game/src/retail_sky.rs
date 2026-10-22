@@ -142,7 +142,7 @@ impl SkyPackage {
         }
         let base = root.join("private/native-skies");
         let read = |suffix: &str| {
-            std::fs::read(base.join(format!("{name}{suffix}"))).map_err(|e| e.to_string())
+            skate_fs::read(base.join(format!("{name}{suffix}"))).map_err(|e| e.to_string())
         };
         let sky: Sky = serde_json::from_slice(&read(".json")?).map_err(|e| e.to_string())?;
         let rgba = read(".rgba")?;

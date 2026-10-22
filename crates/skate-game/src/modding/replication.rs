@@ -8,7 +8,8 @@ use super::{Mods,graphics};
 use bevy::prelude::*;
 use serde::{Deserialize,Serialize};
 use skate_mods::scene::{GraphicsDefinition,NodeState,TransformState,valid_quaternion,valid_vector};
-use std::{collections::{BTreeMap,BTreeSet},time::{Duration,Instant,SystemTime,UNIX_EPOCH}};
+use std::{collections::{BTreeMap,BTreeSet},time::Duration};
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 use wire::*;
 
 type Slot=(u64,String,String);

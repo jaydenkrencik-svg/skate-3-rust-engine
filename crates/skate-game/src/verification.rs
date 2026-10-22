@@ -88,7 +88,7 @@ fn verify(
             "{input_report}Native OnBoard/OffBoard clips available: {}\n",
             skater.animation.evaluator.frames.clip_count()
         );
-        if let Err(error) = std::fs::write(path.with_extension("input.txt"), input_report) {
+        if let Err(error) = skate_fs::write(path.with_extension("input.txt"), input_report) {
             eprintln!("Cannot save controller verification: {error}");
             exit.write(AppExit::error());
             return;
