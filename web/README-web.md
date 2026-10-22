@@ -61,6 +61,22 @@ Server options (each also an environment variable):
 The password is HTTP Basic on every route; put the server behind a TLS reverse
 proxy (Caddy, nginx) for anything but localhost.
 
+### Static hosting (GitHub Pages)
+
+The contents of `web/dist` also work on any static host, with no server and no
+game data on it. The loader finds no `data/index.json` and asks the player to
+choose their converted `assets` folder; the files are read in the tab through
+`blob:` URLs and never uploaded. Static hosts cannot send the cross-origin
+isolation headers, which the current single-threaded build does not need.
+
+```powershell
+webuild.ps1 -Repository https://github.com/<you>/skate-3-rust-engine
+```
+
+then publish `web/dist` (plus an empty `.nojekyll`) as the site, e.g. on a
+`gh-pages` branch. The `-Repository` URL is where the page's GPL source link
+points.
+
 ### Keyboard
 
 Without a gamepad in the first slot, the keyboard stands in for one (a pad
@@ -93,8 +109,8 @@ docker run -p 8080:8080 -v /path/to/assets:/data:ro -e SKATE_WEB_PASSWORD=change
 |---|---|---|
 | Entry | `main` (updater, crash supervisor, trace capture) | `main` only installs the panic hook; the loader calls `skate_start()` after a click |
 | Command line | `std::env::args` | URL query (`web.rs`) |
-| Files | `std::fs` | `skate-fs`: server data index + prefetch + synchronous fetch fallback; writes go to an overlay persisted in `localStorage` (files ≤ 512 KB) |
-| Bevy assets | `FileAssetReader` | default source fetches over HTTP; `mods`/`characters` sources read `skate-fs` |
+| Files | `std::fs` | `skate-fs`: data index (the server's, or a folder the player picked) + prefetch + synchronous fetch fallback; writes go to an overlay persisted in `localStorage` (files ≤ 512 KB) |
+| Bevy assets | `FileAssetReader` | every source reads `skate-fs` |
 | Renderer | Vulkan | WebGPU into `#skate-canvas` |
 | Gamepads | SDL3 (XInput fallback) | Gamepad API, standard mapping → XInput-shaped state; keyboard drives slot 0 when no pad is there |
 | Clock | `std::time` | `web-time` (identical types natively) |

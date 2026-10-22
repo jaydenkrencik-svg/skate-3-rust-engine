@@ -2,7 +2,9 @@ param(
     # Faster iteration: the dev profile instead of wasm-release (fat LTO).
     [switch]$Dev,
     [string]$TargetDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'target'),
-    [string]$OutDirectory = (Join-Path $PSScriptRoot 'dist')
+    [string]$OutDirectory = (Join-Path $PSScriptRoot 'dist'),
+    # Where the page's GPL source link points (the repository this build is published from).
+    [string]$Repository = 'https://github.com/SK8-ENGINE/skate-3-rust-engine'
 )
 # Builds the browser package into web/dist: the loader page, build.json and the
 # wasm-bindgen output in pkg/. Requires the wasm32-unknown-unknown target and
@@ -45,7 +47,7 @@ try {
     Copy-Item -Path (Join-Path $PSScriptRoot 'static/*') -Destination $OutDirectory -Recurse
     $revision = (& git rev-parse HEAD 2>$null)
     $dirty = [bool](& git status --porcelain --untracked-files=no 2>$null)
-    @{ revision = "$revision"; dirty = $dirty; profile = $profile } |
+    @{ revision = "$revision"; dirty = $dirty; profile = $profile; repository = $Repository } |
         ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath (Join-Path $OutDirectory 'build.json')
 
     $size = (Get-Item -LiteralPath $bindgenWasm).Length / 1MB

@@ -1,6 +1,9 @@
-// Loader for the browser build: checks WebGPU, installs the server's data
-// index into the game's virtual filesystem (skate-fs), prefetches the startup
-// files, and starts the game on the player's click (audio needs a gesture).
+// Loader for the browser build: checks WebGPU, installs a data index into the
+// game's virtual filesystem (skate-fs), prefetches the startup files, and
+// starts the game on the player's click (audio needs a gesture). The data is
+// the server's (skate-web-server --data) or, on a static host such as GitHub
+// Pages, a folder the player picks on their own disk: those files stay local
+// and are read through blob: URLs.
 const $ = (id) => document.getElementById(id);
 const status = (text) => { $("status").textContent = text; };
 const progress = (fraction) => { $("progress").style.width = `${Math.round(fraction * 100)}%`; };
@@ -44,6 +47,61 @@ async function fetchJson(url) {
   return response.json();
 }
 
+// Same policy as skate-web-server: files up to 4 MB, smallest first, 192 MB in all.
+function prefetchList(files) {
+  let spent = 0;
+  return Object.entries(files)
+    .filter(([, size]) => size <= 4 * 1048576)
+    .sort(([a, x], [b, y]) => x - y || (a < b ? -1 : 1))
+    .filter(([, size]) => (spent += size) <= 192 * 1048576)
+    .map(([path]) => path);
+}
+
+// An index for a picked folder. Paths drop the folder's own name, so they are
+// relative to it exactly as the server's are relative to --data.
+function localIndex(fileList) {
+  const files = {};
+  const urls = {};
+  for (const file of fileList) {
+    const path = file.webkitRelativePath.split("/").slice(1).join("/");
+    if (!path) continue;
+    files[path] = file.size;
+    urls[path] = URL.createObjectURL(file);
+  }
+  if (!("private/game.json" in files)) {
+    throw new Error("That folder has no private/game.json. Choose the converted assets folder (data/installations/<id>/assets), not the game disc or the data folder above it.");
+  }
+  return { files, urls, prefetch: prefetchList(files), base_url: "" };
+}
+
+function pickFolder() {
+  status("Choose your game data folder.");
+  $("pick").hidden = false;
+  return new Promise((resolve) => {
+    const input = $("folder");
+    input.addEventListener("change", function chosen() {
+      try {
+        const index = localIndex(input.files);
+        input.removeEventListener("change", chosen);
+        $("pick").hidden = true;
+        resolve(index);
+      } catch (error) {
+        // Wrong folder: say why and let the player choose again.
+        status(error.message);
+        input.value = "";
+      }
+    });
+  });
+}
+
+async function dataIndex() {
+  const response = await fetch("data/index.json", { cache: "no-cache" }).catch(() => null);
+  if (response?.ok) return response.json();
+  // 404 on a static host, 503 from a server started without --data.
+  if (!response || response.status === 404 || response.status === 503) return pickFolder();
+  throw new Error(`data/index.json: HTTP ${response.status} — ${(await response.text()).trim()}`);
+}
+
 async function prefetch(index, insert) {
   const files = index.prefetch ?? [];
   const total = files.reduce((sum, path) => sum + (index.files[path] ?? 0), 0);
@@ -53,13 +111,13 @@ async function prefetch(index, insert) {
   async function worker() {
     while (next < files.length && !failed) {
       const path = files[next++];
-      const response = await fetch(`${index.base_url}${encode(path)}`);
+      const response = await fetch(index.urls?.[path] ?? `${index.base_url}${encode(path)}`);
       if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       insert(path, bytes);
       done += bytes.length;
       progress(total ? done / total : 1);
-      status(`Downloading game data… ${(done / 1048576).toFixed(0)} / ${(total / 1048576).toFixed(0)} MB`);
+      status(`Loading game data… ${(done / 1048576).toFixed(0)} / ${(total / 1048576).toFixed(0)} MB`);
     }
   }
   await Promise.all(Array.from({ length: 12 }, worker));
@@ -69,17 +127,18 @@ async function main() {
   try {
     const build = await fetchJson("build.json").catch(() => null);
     if (build?.revision) {
+      const repository = build.repository || "https://github.com/SK8-ENGINE/skate-3-rust-engine";
       $("revision").textContent = ` (${build.revision.slice(0, 12)})`;
-      $("source").href = `https://github.com/SK8-ENGINE/skate-3-rust-engine/tree/${build.revision}`;
+      $("source").href = `${repository}/tree/${build.revision}`;
     }
     await checkWebGpu();
     status("Loading the game…");
     const game = await import(`./pkg/skate3rust.js`);
     await game.default();
     status("Reading the game data index…");
-    const index = await fetchJson("data/index.json");
+    const index = await dataIndex();
     const count = game.skate_fs_install_index(JSON.stringify(index));
-    status(`Downloading game data… (${count} files on the server)`);
+    status(`Loading game data… (${count} files)`);
     await prefetch(index, game.skate_fs_insert);
     if (failed) return;
     progress(1);

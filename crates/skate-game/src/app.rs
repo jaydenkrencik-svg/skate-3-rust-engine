@@ -58,6 +58,13 @@ pub(crate) fn build(
 ) -> App {
     let retail_scene = config.map.as_ref().is_some_and(|map| crate::retail_render::RetailScene::for_map(map));
     let mut app = App::new();
+    // Browser: Bevy's own loads go through skate-fs as well, so a data folder
+    // the player picked on disk serves models and textures like the server.
+    #[cfg(target_arch = "wasm32")]
+    app.register_asset_source(
+        bevy::asset::io::AssetSourceId::Default,
+        bevy::asset::io::AssetSourceBuilder::new(|| crate::assets::directory_reader(skate_fs::WEB_ROOT.into())),
+    );
     crate::custom_models::register_source(&mut app);
     crate::modding::register_source(&mut app);
     // The browser build renders through WebGPU into the loader page's canvas,

@@ -32,6 +32,10 @@
   button { margin-top: 20px; width: 100%; padding: 12px; border: 0; border-radius: 8px;
     background: var(--accent); color: #17130a; font: 600 16px system-ui, sans-serif; cursor: pointer; }
   button[hidden] { display: none; }
+  label.button { display: block; margin-top: 16px; padding: 12px; border-radius: 8px; text-align: center;
+    background: var(--accent); color: #17130a; font: 600 16px system-ui, sans-serif; cursor: pointer; }
+  #pick[hidden] { display: none; }
+  code { font-size: 12px; color: var(--text); }
   .hint { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
   #error { display: none; margin-top: 18px; }
   #error.shown { display: block; }
@@ -50,11 +54,18 @@
     <p class="sub">Browser build · WebGPU</p>
     <p id="status">Checking your browser…</p>
     <div class="bar"><div id="progress"></div></div>
+    <div id="pick" hidden>
+      <p class="hint">This site has no game data. Choose the converted <code>assets</code> folder that
+        setup made from your own Skate 3 disc (the one containing <code>private/game.json</code>).
+        Files are read in this browser tab and never uploaded.</p>
+      <label class="button" for="folder">Choose game data folder</label>
+      <input id="folder" type="file" webkitdirectory multiple hidden>
+    </div>
     <button id="start" hidden>Click to start</button>
     <p class="hint">Plug in a controller and press any button so the browser can see it. Escape opens settings.</p>
     <div id="error"><pre id="error-text"></pre><button id="copy">Copy error</button></div>
     <footer>GPL-3.0 · <a id="source" href="https://github.com/SK8-ENGINE/skate-3-rust-engine">source code</a><span id="revision"></span>.
-      Not affiliated with Electronic Arts. Game data comes from the server operator's own disc.</footer>
+      Not affiliated with Electronic Arts. Game data comes from your own disc and is never part of this site.</footer>
   </div>
 </div>
 <script type="module" src="loader.js"></script>

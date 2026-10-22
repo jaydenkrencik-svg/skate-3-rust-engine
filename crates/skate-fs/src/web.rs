@@ -35,6 +35,9 @@ struct State {
     overlay: BTreeMap<String, Option<Arc<[u8]>>>,
     /// Base URL the server's data directory is served from (ends with '/').
     base_url: String,
+    /// Per-file URLs that override `base_url`: the loader's `blob:` URLs for a
+    /// data folder the player picked on their own disk.
+    urls: HashMap<String, String>,
 }
 
 fn state() -> MutexGuard<'static, State> {
@@ -133,16 +136,23 @@ struct IndexFile {
     files: BTreeMap<String, u64>,
     #[serde(default)]
     base_url: Option<String>,
+    /// Paths (as in `files`) fetched from their own URL instead of `base_url`.
+    #[serde(default)]
+    urls: BTreeMap<String, String>,
 }
 
 /// Called by the loader before the game starts, with the server's
-/// `index.json`. Also restores persisted writes.
+/// `index.json` or an index the loader built for a folder the player picked.
+/// Also restores persisted writes.
 #[wasm_bindgen]
 pub fn skate_fs_install_index(json: &str) -> Result<usize, JsValue> {
     let index: IndexFile = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let mut state = state();
     if let Some(base) = index.base_url {
         state.base_url = if base.ends_with('/') { base } else { format!("{base}/") };
+    }
+    for (relative, url) in index.urls {
+        state.urls.insert(normalize(&Path::new(WEB_ROOT).join(relative)), url);
     }
     for (relative, size) in index.files {
         let path = normalize(&Path::new(WEB_ROOT).join(relative));
@@ -203,7 +213,10 @@ fn load(path: &str) -> io::Result<Arc<[u8]>> {
         if !state.index.contains_key(path) {
             return Err(not_found(path));
         }
-        url_for(&state.base_url, path).ok_or_else(|| not_found(path))?
+        match state.urls.get(path) {
+            Some(url) => url.clone(),
+            None => url_for(&state.base_url, path).ok_or_else(|| not_found(path))?,
+        }
     };
     let bytes: Arc<[u8]> = fetch_sync(&url)?.into();
     state().cache.insert(path.to_string(), bytes.clone());
